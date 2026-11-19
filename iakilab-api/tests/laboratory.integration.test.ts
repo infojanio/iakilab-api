@@ -11,9 +11,9 @@ import { PrismaAuthRepository } from '../src/repositories/prisma/prisma-auth-rep
 import { PrismaReportsRepository } from '../src/repositories/prisma/prisma-reports-repository.js'
 import { PrismaLaboratoryRepository } from '../src/repositories/prisma/prisma-laboratory-repository.js'
 import { AuthService } from '../src/use-cases/auth/auth-service.js'
-import { ManageLaboratory } from '../src/use-cases/laboratory/manage-laboratory.js'
+import {makeLaboratoryUseCases} from '../src/use-cases/_factories/make-laboratory-use-cases.js'
 import { PrismaPlatformRepository } from '../src/repositories/prisma/prisma-platform-repository.js'
-import { ReadPlatform } from '../src/use-cases/platform/read-platform.js'
+import {makePlatformUseCases} from '../src/use-cases/_factories/make-platform-use-cases.js'
 import { ReadReports } from '../src/use-cases/reports/read-reports.js'
 
 const enabled = process.env.RUN_POSTGRES_TESTS === 'true'
@@ -73,7 +73,7 @@ describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
     const repo = new PrismaReportsRepository(db)
     const storage = new LocalPdfStorage(storageDir)
     const app = await buildApp({ jwtSecret: 'z'.repeat(64), origins: [origin], cookieSecure: false, storageRoot: storageDir }, {
-      auth, storage, reports: new ReadReports(repo), platform: new ReadPlatform(new PrismaPlatformRepository(db)), laboratory: new ManageLaboratory(auth, new PrismaLaboratoryRepository(db), repo, storage),
+      auth, storage, reports: new ReadReports(repo), platform: makePlatformUseCases(new PrismaPlatformRepository(db)), laboratory: makeLaboratoryUseCases(auth, new PrismaLaboratoryRepository(db), repo, storage),
     })
     try {
       const [admin, other, analyst, platform] = await Promise.all(users.map(async id => {

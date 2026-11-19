@@ -1,10 +1,10 @@
-import type { LocalPdfStorage } from '../../lib/pdf-storage.js'
-import { AppError, type Actor } from '../../domain.js'
-import type { AuthService } from '../auth/auth-service.js'
-import type { ReportsRepository } from '../../repositories/reports-repository.js'
-import type { ClientData, SampleData, DraftData, DraftTransition, LaboratoryRepository } from '../../repositories/laboratory-repository.js'
+import type {AuthService} from '../auth/auth-service.js'
+import type {DraftData, LaboratoryRepository, DraftTransition} from '../../repositories/laboratory-repository.js'
+import {requireLaboratoryAdmin, requireRecord, type Scope} from '../laboratory/scope.js'
+import {AppError} from '../../domain.js'
+import type {LocalPdfStorage} from '../../lib/pdf-storage.js'
+import type {ReportsRepository} from '../../repositories/reports-repository.js'
 
-type Scope = { actor: Actor; laboratoryId?: string }
 type Transition = 'edit' | 'submit' | 'validate' | 'return'
 
 const transitions = {
@@ -14,47 +14,19 @@ const transitions = {
   return: { from: 'AWAITING_VALIDATION', to: 'DRAFT', action: 'RETURNED' },
 } as const satisfies Record<Transition, Pick<DraftTransition, 'from' | 'to' | 'action'>>
 
-function requireRecord<T>(record: T | null): T {
-  if (!record) throw new AppError(404, 'RECORD_NOT_FOUND')
-  return record
-}
-
-export class ManageLaboratory {
-  constructor(private auth: AuthService, private repository: LaboratoryRepository, private reports: ReportsRepository, private storage: LocalPdfStorage) {}
+export class ManageReportDrafts {
+  constructor(
+    private auth: AuthService,
+    private repository: Pick<LaboratoryRepository, 'createDraft' | 'transition'>,
+    private reports: ReportsRepository, private storage: LocalPdfStorage
+  ) {}
 
   private tenant(scope: Scope) {
     return this.auth.tenant(scope.actor, scope.laboratoryId)
   }
-  private requireAdmin(scope: Scope) {
-    if (scope.actor.role === 'ANALISTA') throw new AppError(403, 'ROLE_NOT_ALLOWED')
-  }
 
-  async listClients(scope: Scope) { return this.repository.listClients(await this.tenant(scope)) }
-  async client(scope: Scope, id: string) { return requireRecord(await this.repository.client(await this.tenant(scope), id)) }
-  async createClient(scope: Scope, data: ClientData) {
-    this.requireAdmin(scope)
-    return this.repository.createClient(await this.tenant(scope), data)
-  }
-  async updateClient(scope: Scope, id: string, data: Partial<ClientData>) {
-    this.requireAdmin(scope)
-    return requireRecord(await this.repository.updateClient(await this.tenant(scope), id, data))
-  }
-  async archiveClient(scope: Scope, id: string) {
-    this.requireAdmin(scope)
-    requireRecord(await this.repository.updateClient(await this.tenant(scope), id, { active: false }))
-  }
-  async listSamples(scope: Scope) { return this.repository.listSamples(await this.tenant(scope)) }
-  async sample(scope: Scope, id: string) { return requireRecord(await this.repository.sample(await this.tenant(scope), id)) }
-  async createSample(scope: Scope, data: SampleData) { return this.repository.createSample(await this.tenant(scope), data) }
-  async updateSample(scope: Scope, id: string, data: Partial<SampleData>) {
-    return requireRecord(await this.repository.updateSample(await this.tenant(scope), id, data))
-  }
-  async archiveSample(scope: Scope, id: string) {
-    this.requireAdmin(scope)
-    requireRecord(await this.repository.updateSample(await this.tenant(scope), id, { active: false }))
-  }
-  async metrics(scope: Scope) { return this.repository.metrics(await this.tenant(scope)) }
   async createDraft(scope: Scope, draft: DraftData) { return this.repository.createDraft(await this.tenant(scope), scope.actor.user.id, draft) }
+
   async importPdf(scope: Scope, data: Pick<DraftData, 'identification' | 'customerName'> & { notes: string }, bytes: Buffer) {
     const laboratoryId = await this.tenant(scope)
     const { discard, ...file } = await this.storage.saveOriginal(laboratoryId, bytes)
@@ -65,8 +37,9 @@ export class ManageLaboratory {
       throw error
     }
   }
+
   async transition(scope: Scope, id: string, revision: number, action: Transition, draft?: DraftData) {
-    if (action === 'validate' || action === 'return') this.requireAdmin(scope)
+    if (action === 'validate' || action === 'return') requireLaboratoryAdmin(scope)
     const laboratoryId = await this.tenant(scope)
     const current = requireRecord(await this.reports.find(laboratoryId, id))
     const transition = transitions[action]

@@ -76,3 +76,14 @@ O preço é recebido como decimal textual e persistido como Decimal. A configura
 A branch `vps` do LabMoura consulta laudos por `/reports/:id` e monta URLs legadas de PDF por nome. Antes de migrar, verificar na homologação os dois formatos de URL contra dados sintéticos e conferir um QR histórico, sem reaproveitar arquivos reais como fixtures. Os links existentes continuam atendidos pelo legado. A nova consulta pública, emissão A1, convites de usuários, suspensão comercial e aplicação de franquias têm implementação pendente.
 
 Validação local em PostgreSQL 16: schema com as duas migrations do piloto, build e 37 testes da API, build e 14 testes do painel. A integração verificou recusa de operações de plataforma para ADMIN local, bloqueio de sobreposição concorrente, acesso autenticado ao PDF original e recusa entre laboratórios. A interface no navegador e o ambiente da Hostinger não foram validados nesta etapa.
+
+## Organização do backend no padrão IAkí em 19/11/2026
+
+A comparação com `infojanio/iaki_backend:stackblitz` mostrou que o piloto concentrava validação, entrada HTTP e execução em arquivos `routes.ts`. O backend agora registra as rotas por módulo e delega cada operação a um controller próprio. Os controllers tratam Zod, status e resposta HTTP. Os casos de uso resolvem vínculo e permissão e delegam a persistência às interfaces de repositório. A composição em `src/use-cases/_factories/` injeta os repositórios Prisma no servidor e as dependências de teste nas suítes.
+
+Exemplos de fluxo:
+
+- Planos: `http/controllers/plans/routes.ts` → `create-plan.ts` → `use-cases/plans/manage-plans.ts` → `repositories/platform-repository.ts` → `repositories/prisma/prisma-platform-repository.ts`.
+- Revisão de laudos: `http/controllers/report-drafts/routes.ts` → `validate-report.ts` → `use-cases/reports/manage-report-drafts.ts` → transição condicional no repositório Prisma, com histórico e escopo por laboratório.
+
+A composição mantém casos de uso relacionados agrupados por domínio e compartilha os repositórios Prisma existentes. Foram preservados URLs, payloads, status HTTP, configuração de sessão, schema, migrations e consumo pelo painel. Validação local com TypeScript, build e 37 testes da API, incluindo PostgreSQL com contas de dois laboratórios.
