@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum GlobalRole {
+  USER
+  SUPER_ADMIN
+}
+enum LaboratoryRole {
+  ADMIN
+  ANALISTA
+}
+enum ReportKind {
+  WATER
+  SOIL
+  PDF_UPLOAD
+}
+enum ReportStage {
+  DRAFT
+  AWAITING_VALIDATION
+  VALIDATED
+  ISSUED
+}
+enum SignatureStatus {
+  NOT_REQUESTED
+  PENDING
+  FAILED
+  VERIFIED
+}
+enum FileKind {
+  ORIGINAL
+  ISSUED
+  SIGNED
+}
+model Laboratory {
+  id String @id @default(uuid()) @db.Uuid
+  slug String @unique
+  name String
+  document String? @unique
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  memberships LaboratoryMembership[]
+  sessions Session[]
+  reports Report[]
+  versions ReportVersion[]
+  files ReportFile[]
+  subscriptions Subscription[]
+  clients Client[]
+  samples Sample[]
+  reportEvents ReportEvent[]
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  email String @unique
+  passwordHash String
+  globalRole GlobalRole @default(USER)
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  memberships LaboratoryMembership[]
+  sessions Session[]
+  resets PasswordReset[]
+}
+model LaboratoryMembership {
+  laboratoryId String @db.Uuid
+  userId String @db.Uuid
+  role LaboratoryRole
+  active Boolean @default(true)
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  @@id([laboratoryId, userId])
+  @@index([userId, active])
+}
+model Session {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  laboratoryId String? @db.Uuid
+  currentRefreshHash String @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  laboratory Laboratory? @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  refreshUses RefreshUse[]
+  @@index([userId, revokedAt])
+}
+// Consumed hashes are retained to detect refresh-token reuse and revoke the session.
+model RefreshUse {
+  hash String @id
+  sessionId String @db.Uuid
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+}
+model PasswordReset {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  tokenHash String @unique
+  expiresAt DateTime
+  usedAt DateTime?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+model Report {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  identification String
+  customerName String
+  kind ReportKind
+  stage ReportStage @default(DRAFT)
+  // Validated, versioned DTO snapshot. No signature URLs or status accepted from this JSON.
+  draftData Json
+  revision Int @default(1)
+  legacyPublicId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  versions ReportVersion[]
+  events ReportEvent[]
+  @@unique([laboratoryId, id])
+  @@unique([laboratoryId, identification])
+  @@index([laboratoryId, createdAt, id])
+  @@index([laboratoryId, stage])
+}
+model ReportVersion {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  reportId String @db.Uuid
+  number Int
+  snapshot Json
+  validatedAt DateTime?
+  validatedBy String? @db.Uuid
+  issuedAt DateTime?
+  issuedBy String? @db.Uuid
+  signatureStatus SignatureStatus @default(NOT_REQUESTED)
+  signatureVerifiedAt DateTime?
+  // Fingerprint of the exact signed bytes verified by the signing worker.
+  signedSha256 String?
+  createdAt DateTime @default(now())
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  report Report @relation(fields: [laboratoryId, reportId], references: [laboratoryId, id], onDelete: Restrict)
+  files ReportFile[]
+  @@unique([laboratoryId, id])
+  @@unique([laboratoryId, reportId, number])
+}
+model ReportFile {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  versionId String @db.Uuid
+  kind FileKind
+  storageKey String @unique
+  sha256 String
+  byteLength Int
+  createdAt DateTime @default(now())
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  version ReportVersion @relation(fields: [laboratoryId, versionId], references: [laboratoryId, id], onDelete: Restrict)
+  @@unique([laboratoryId, versionId, kind])
+}
+// Reserved for the following module; there are no billing mutation routes yet.
+model Plan {
+  id String @id @default(uuid()) @db.Uuid
+  name String
+  price Decimal @db.Decimal(12,2)
+  maxUsers Int
+  maxReports Int
+  storageBytes BigInt
+  active Boolean @default(true)
+  subscriptions Subscription[]
+}
+model Subscription {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  planId String @db.Uuid
+  status String
+  startsAt DateTime
+  expiresAt DateTime
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  @@index([laboratoryId, expiresAt])
+}
+
+model Client {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  name String
+  document String
+  email String
+  phone String
+  address String
+  active Boolean @default(true)
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  @@unique([laboratoryId, id])
+  @@index([laboratoryId, active, name])
+}
+model Sample {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  identification String
+  type String
+  origin String
+  collectedAt DateTime
+  status String
+  analyses String[]
+  active Boolean @default(true)
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  @@unique([laboratoryId, id])
+  @@unique([laboratoryId, identification])
+  @@index([laboratoryId, active, collectedAt])
+}
+model ReportEvent {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  reportId String @db.Uuid
+  actorId String @db.Uuid
+  revision Int
+  action String
+  createdAt DateTime @default(now())
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  report Report @relation(fields: [laboratoryId, reportId], references: [laboratoryId, id], onDelete: Restrict)
+  @@unique([laboratoryId, reportId, revision])
+}

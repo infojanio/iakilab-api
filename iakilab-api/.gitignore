@@ -1,0 +1,13 @@
+node_modules/
+build/
+.env
+.env.*
+!.env.example
+private-storage/
+coverage/
+*.pfx
+*.p12
+*.pem
+*.key
+*.pdf
+*.log
