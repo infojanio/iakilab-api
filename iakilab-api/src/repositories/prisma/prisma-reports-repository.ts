@@ -16,5 +16,5 @@ export class PrismaReportsRepository implements ReportsRepository {
   const [rows,total]=await this.db.$transaction([this.db.report.findMany({where,include,skip:(f.page-1)*f.perPage,take:f.perPage,orderBy:[{createdAt:'desc'},{id:'desc'}]}),this.db.report.count({where})])
   return {rows,total}
  }
- find(laboratoryId:string,id:string){return this.db.report.findUnique({where:{laboratoryId_id:{laboratoryId,id}},include})}
+ find(laboratoryId:string,id:string){return this.db.report.findUnique({where:{laboratoryId_id:{laboratoryId,id}},include:{...include,events:{orderBy:{revision:'asc'},select:{action:true,createdAt:true}}}})}
 }

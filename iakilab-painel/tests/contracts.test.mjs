@@ -9,7 +9,7 @@ const resources=await moduleOf('src/services/resources.ts')
 let requests=0
 globalThis.fetch=async()=>{requests++;throw new Error('Unexpected request')}
 test('Legacy API is never called without verified secure backend configuration',async()=>{await assert.rejects(api.request('/reports'));await assert.rejects(auth.authService.login('test@example.com','not-a-real-password'));await assert.rejects(reports.reportsService.list({},'demo'));await assert.rejects(resources.publicReportsService.verify('any'));assert.equal(requests,0)})
-test('Emission, validation, signature and upload cannot send mutations',async()=>{for(const operation of ['create','validate','sign','uploadPdf'])await assert.rejects(reports.reportsService[operation]());assert.equal(requests,0)})
+test('Legacy emission, signature and upload cannot send mutations',async()=>{for(const operation of ['create','sign','uploadPdf'])await assert.rejects(reports.reportsService[operation]());assert.equal(requests,0)})
 test('Report normalization handles arrays and common paginated wrappers',()=>{const row={id:'example',customerName:'Test'};for(const input of [[row],{reports:[row],totalPages:3},{data:[row],meta:{totalPages:3,total:24}},{data:{items:[row],totalPages:3}}])assert.equal(reports.normalizeReports(input).reports[0].id,'example');assert.equal(reports.normalizeReports({data:[row],meta:{totalPages:3,total:24}}).total,24)})
 test('Malformed API responses fail explicitly rather than render made-up results',()=>{for(const input of [null,{}, {reports:[{customerName:'No id'}]}, {reports:'private'}])assert.throws(()=>reports.normalizeReports(input))})
 test('PDF URLs stay unavailable while the secure API is disabled',()=>{for(const url of ['javascript:alert(1)','https://evil.example/pdf/a.pdf','/pdf/example.pdf'])assert.equal(api.authorizedPdfUrl(url),null)})
@@ -20,7 +20,7 @@ const pdfImport=await moduleOf('src/services/pdf-import.ts')
 test('Water and soil drafts preserve distinct structures without sharing sample results',()=>{const water=templates.createStructuredDraft('WATER');const soil=templates.createStructuredDraft('SOIL');const other=templates.createStructuredDraft('SOIL');assert.equal(water.waterResults.length,3);assert.equal(water.soilSamples.length,0);assert.equal(soil.waterResults.length,0);assert.equal(soil.soilParameters.length,36);soil.soilSamples[0].results['soil-0']='6,00';assert.deepEqual(other.soilSamples[0].results,{});assert.equal(water.waterResults[0].reference,'');assert.ok(templates.waterCatalog.some(p=>p.group==='BACTERIOLOGICAL'));assert.equal(soil.templateVersion,'1')})
 test('Soil previews group all samples in sets of three without dropping a sample',()=>{const list=[1,2,3,4,5,6,7];const groups=templates.sampleChunks(list);assert.deepEqual(groups,[[1,2,3],[4,5,6],[7]]);assert.deepEqual(groups.flat(),list)})
 test('Local PDF checks reject empty, oversized, renamed and invalid files',async()=>{await assert.rejects(pdfImport.validateLocalPdf(new File([],'empty.pdf')));await assert.rejects(pdfImport.validateLocalPdf(new File(['%PDF-1.7'],'other.txt')));await assert.rejects(pdfImport.validateLocalPdf(new File(['not a PDF'],'invalid.pdf')));await assert.rejects(pdfImport.validateLocalPdf(new File([new Uint8Array(pdfImport.MAX_PDF_BYTES+1)],'oversized.pdf')));await pdfImport.validateLocalPdf(new File(['%PDF-1.7\n%%EOF'],'example.PDF'));assert.equal(requests,0)})
-test('Structured draft and PDF import cannot call legacy emission routes',async()=>{await assert.rejects(reports.reportsService.saveDraft(templates.createStructuredDraft('WATER')));await assert.rejects(reports.reportsService.importPdfDraft({reportKind:'PDF_UPLOAD',identification:'DEMO',customerName:'Demo',notes:'',file:new File(['%PDF-1.7'],'demo.pdf')}));assert.equal(requests,0)})
+test('Structured draft and PDF import cannot call legacy emission routes',async()=>{await assert.rejects(reports.reportsService.saveDraft(templates.createStructuredDraft('WATER')));await assert.rejects(reports.reportsService.importPdfDraft({reportKind:'PDF_UPLOAD',identification:'DEMO',customerName:'Demo',notes:'',file:new File(['%PDF-1.7'],'demo.pdf')}));await assert.rejects(reports.reportsService.transition('report','lab',1,'validate'));assert.equal(requests,0)})
 test('Temporary draft row identifiers also work when randomUUID is unavailable',()=>{const descriptor=Object.getOwnPropertyDescriptor(globalThis,'crypto');try{Object.defineProperty(globalThis,'crypto',{configurable:true,value:{}});const first=templates.newDraftId();const second=templates.newDraftId();assert.notEqual(first,second);assert.ok(first.startsWith('local-'));assert.ok(templates.createStructuredDraft('SOIL').soilSamples[0].id)}finally{if(descriptor)Object.defineProperty(globalThis,'crypto',descriptor)}})
 
 test('Enabling the API requires an explicitly configured address', async () => {
@@ -40,4 +40,41 @@ test('Private PDF requests reject other origins and non-PDF routes', async () =>
     await assert.rejects(enabledApi.requestPdf(value), { status: 403 })
   }
   assert.equal(requests, 0)
+})
+
+
+test('Authenticated report writes use the pilot routes, revisions and multipart body', async () => {
+  const {reportsService} = await moduleOf('src/services/reports.ts', {
+    VITE_API_URL: 'https://api.example.test',
+    VITE_SECURE_API_ENABLED: 'true',
+  })
+  const previousFetch = globalThis.fetch
+  const calls = []
+  globalThis.fetch = async (url, options) => {
+    calls.push({url, ...options})
+    return new Response(JSON.stringify({id:'report',revision:2}))
+  }
+  try {
+    const draft = {...templates.createStructuredDraft('SOIL'), identification:'S-1', customerName:'Cliente'}
+    await reportsService.saveDraft(draft, 'lab')
+    await reportsService.saveDraft(draft, 'lab', {id:'report',revision:1})
+    await reportsService.importPdfDraft({
+      reportKind:'PDF_UPLOAD', identification:'PDF-1', customerName:'Cliente', notes:'',
+      file:new File(['%PDF-1.7'], 'example.pdf'),
+    }, 'lab')
+    for (const action of ['submit','validate','return']) await reportsService.transition('report','lab',2,action)
+    assert.deepEqual(calls.map(({url,method}) => [method,new URL(url).pathname]), [
+      ['POST','/reports/drafts'], ['PATCH','/reports/report'], ['POST','/reports/drafts/import-pdf'],
+      ['POST','/reports/report/submit'], ['PATCH','/reports/report/validate'], ['POST','/reports/report/return'],
+    ])
+    assert.ok(calls.every(({url}) => new URL(url).searchParams.get('laboratoryId') === 'lab'))
+    assert.deepEqual(JSON.parse(calls[1].body), {revision:1,draft})
+    assert.equal(calls[2].headers.has('Content-Type'), false)
+    assert.equal(calls[2].body.get('file').name, 'example.pdf')
+    for (const {body} of calls.slice(3)) assert.deepEqual(JSON.parse(body), {revision:2})
+    globalThis.fetch = async () => new Response('{}', {status:409})
+    await assert.rejects(reportsService.transition('report','lab',2,'validate'), {status:409})
+  } finally {
+    globalThis.fetch = previousFetch
+  }
 })

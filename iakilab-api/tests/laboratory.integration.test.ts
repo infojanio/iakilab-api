@@ -91,17 +91,29 @@ describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
       expect(sample.statusCode).toBe(201)
       expect((await app.inject({ url: '/samples', headers: other })).json()).toEqual([])
       expect((await app.inject({ url: '/dashboard/metrics', headers: admin })).json()).toMatchObject({ clients: 1, samples: 1 })
-      const report = await app.inject({ method: 'POST', url: '/reports/drafts', headers: analyst, payload: {
+      const draft = {
         identification: 'L-01', customerName: 'Cliente A', reportKind: 'WATER', templateVersion: '1',
         waterResults: [{ id: 'ph', parameter: 'pH', unit: '', method: '', reference: '', group: 'PHYSICOCHEMICAL', result: '7,0', assayDate: '' }],
-      } })
+      }
+      const report = await app.inject({ method: 'POST', url: '/reports/drafts', headers: analyst, payload: draft })
       expect(report.statusCode).toBe(201)
       const route = '/reports/' + report.json().id
-      expect((await app.inject({ method: 'POST', url: route + '/submit', headers: analyst, payload: { revision: 1 } })).statusCode).toBe(200)
-      expect((await app.inject({ method: 'PATCH', url: route + '/validate', headers: analyst, payload: { revision: 2 } })).statusCode).toBe(403)
-      const validations = await Promise.all([1, 2].map(() => app.inject({ method: 'PATCH', url: route + '/validate', headers: admin, payload: { revision: 2 } })))
+      const edit = { revision: 1, draft: { ...draft, customerName: 'Cliente A atualizado' } }
+      expect((await app.inject({ method: 'PATCH', url: route, headers: other, payload: edit })).statusCode).toBe(404)
+      expect((await app.inject({ method: 'PATCH', url: route + '?laboratoryId=' + ids[0], headers: other, payload: edit })).statusCode).toBe(403)
+      expect((await app.inject({ method: 'PATCH', url: route, headers: analyst, payload: edit })).json()).toMatchObject({ revision: 2, customerName: edit.draft.customerName })
+      expect((await app.inject({ method: 'PATCH', url: route, headers: analyst, payload: edit })).statusCode).toBe(409)
+      expect((await app.inject({ method: 'POST', url: route + '/submit', headers: analyst, payload: { revision: 2 } })).statusCode).toBe(200)
+      expect((await app.inject({ method: 'POST', url: route + '/return', headers: analyst, payload: { revision: 3 } })).statusCode).toBe(403)
+      expect((await app.inject({ method: 'POST', url: route + '/return', headers: admin, payload: { revision: 3 } })).json()).toMatchObject({ revision: 4, status: 'RASCUNHO' })
+      expect((await app.inject({ method: 'POST', url: route + '/submit', headers: analyst, payload: { revision: 4 } })).statusCode).toBe(200)
+      expect((await app.inject({ method: 'PATCH', url: route + '/validate', headers: analyst, payload: { revision: 5 } })).statusCode).toBe(403)
+      const validations = await Promise.all([1, 2].map(() => app.inject({ method: 'PATCH', url: route + '/validate', headers: admin, payload: { revision: 5 } })))
       expect(validations.map(result => result.statusCode).sort()).toEqual([200, 409])
-      expect(await db.reportEvent.count({ where: { laboratoryId: ids[0], reportId: report.json().id } })).toBe(3)
+      expect(await db.reportEvent.count({ where: { laboratoryId: ids[0], reportId: report.json().id } })).toBe(6)
+      const detail = await app.inject({ url: route, headers: admin })
+      expect(detail.json().validationHistory.map((event: { description: string }) => event.description))
+        .toEqual(['Rascunho criado', 'Rascunho editado', 'Enviado para revisão', 'Devolvido para ajustes', 'Enviado para revisão', 'Laudo validado'])
       expect((await app.inject({ url: route, headers: other })).statusCode).toBe(404)
 
       const boundary = 'iakilab-test-boundary'

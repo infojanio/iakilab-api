@@ -11,8 +11,10 @@ export function reportDTO(r:ReportRecord){
  const source=r.stage==='ISSUED'?r.versions[0]?.snapshot:r.draftData
  const data=(source&&typeof source==='object'&&!Array.isArray(source)?source:{}) as Record<string,unknown>
  const mapped=Object.fromEntries(legacy.filter(k=>k in data).map(k=>[k,data[k]]))
+ const descriptions:Record<string,string>={CREATED:'Rascunho criado',EDITED:'Rascunho editado',SUBMITTED:'Enviado para revisão',RETURNED:'Devolvido para ajustes',VALIDATED:'Laudo validado'}
+ const validationHistory=r.events?.map(event=>({date:event.createdAt.toISOString(),description:descriptions[event.action]??event.action}))
  const statuses={DRAFT:'RASCUNHO',AWAITING_VALIDATION:'AGUARDANDO_VALIDACAO',VALIDATED:'VALIDADO',ISSUED:'VALIDADO'}
- return {...mapped,id:r.id,laboratoryId:r.laboratoryId,identification:r.identification,revision:r.revision,customerName:r.customerName,createdAt:r.createdAt.toISOString(),status:file?'ASSINADO':statuses[r.stage],reportKind:r.kind,emissionStatus:r.stage,signatureStatus:r.versions[0]?.signatureStatus??'NOT_REQUESTED',signedPdfUrl:file?`/pdf/${r.id}`:undefined,draftData:source??{}}
+ return {...mapped,id:r.id,laboratoryId:r.laboratoryId,identification:r.identification,revision:r.revision,customerName:r.customerName,createdAt:r.createdAt.toISOString(),status:file?'ASSINADO':statuses[r.stage],reportKind:r.kind,emissionStatus:r.stage,signatureStatus:r.versions[0]?.signatureStatus??'NOT_REQUESTED',signedPdfUrl:file?`/pdf/${r.id}`:undefined,draftData:source??{},validationHistory}
 }
 export class ReadReports {
  constructor(private repo:ReportsRepository){}

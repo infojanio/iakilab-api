@@ -35,3 +35,22 @@ confirmaram login, renovação única concorrente, logout, listagem, detalhe, le
 autenticada de um PDF sintético e bloqueio de leitura cruzada. A interface compilou
 e a rota do painel respondeu pelo Vite. A execução visual em Chromium ficou
 pendente porque o ambiente bloqueou a inicialização do navegador.
+
+## Integração do fluxo de laudos em 19/11/2026
+
+A branch local `trabalho/laudos-homologacao` parte da API v0.2.1 e do painel do pacote de homologação. A API já segue a organização do IAkí em controllers, casos de uso, repositórios e middlewares. A estrutura e o histórico de migrations do piloto foram preservados.
+
+| Tela | Endpoint | Contrato | Verificação local |
+|---|---|---|---|
+| Sessão e perfil | `POST /sessions`, `POST /sessions/refresh`, `POST /sessions/logout`, `GET /users/me` | Credenciais no login, cookie HttpOnly rotativo, perfil e token de acesso | Suíte da API |
+| Lista e detalhe | `GET /reports`, `GET /reports/:id` | Lista paginada, detalhe com revisão, dados do rascunho e histórico | Suíte da API e contratos do painel |
+| PDF assinado | `GET /pdf/:id` | Bytes autenticados, abertos como Blob | Suíte da API com dados sintéticos |
+| Novo rascunho e edição | `POST /reports/drafts`, `PATCH /reports/:id` | Rascunho de água ou solo, edição com `{revision,draft}` | Contratos do painel e integração PostgreSQL |
+| Importar PDF | `POST /reports/drafts/import-pdf` | Multipart com `file`, `identification`, `customerName` e `notes` | Contratos do painel e integração PostgreSQL |
+| Revisão técnica | `POST /reports/:id/submit`, `PATCH /reports/:id/validate`, `POST /reports/:id/return` | `{revision}`, devolução para rascunho e conflito HTTP 409 | Contratos do painel e integração PostgreSQL |
+
+O painel autenticado expõe revisão para ADMIN. ANALISTA pode preparar e enviar. SUPER_ADMIN continua na área de plataforma no painel e segue as regras de escopo da API para ações laboratoriais. O modo demonstrativo usa prévias locais.
+
+As duas migrations originais foram aplicadas em PostgreSQL 16 local, no banco `iakilab_test`. Os builds passaram. Foram executados 37 testes de API e 14 testes do painel. Os casos com dois laboratórios cobrem leitura e edição cruzadas, perfil sem permissão, edição desatualizada, validação concorrente, histórico e importação de PDF privado.
+
+Pendente confirmar o fluxo visual no navegador, a sessão entre as origens publicadas e a emissão com A1. O original importado tem prévia local antes do envio. A API existente de download serve o PDF final verificado.
