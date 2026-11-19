@@ -24,7 +24,7 @@ export const reportsService={
   form.set('file', draft.file)
   return mutate('/reports/drafts/import-pdf', laboratoryId, 'POST', form)
  },
- transition(id:string, laboratoryId:string, revision:number, action:'submit'|'validate'|'return') {
+ transition(id:string, laboratoryId:string, revision:number, action:'submit'|'validate'|'return'|'issue') {
   return mutate('/reports/' + encodeURIComponent(id) + '/' + action,
    laboratoryId, action === 'validate' ? 'PATCH' : 'POST', JSON.stringify({revision}))
  },
@@ -35,7 +35,8 @@ async function mutate(path:string, laboratoryId:string, method:string, body:Body
  try {
   const query = new URLSearchParams()
   if (laboratoryId) query.set('laboratoryId', laboratoryId)
-  return normalizeReport(await request<unknown>(path + (query.size ? '?' + query : ''), {method,body}))
+  const options = path.endsWith('/issue') ? {timeoutMs: 110000} : undefined
+  return normalizeReport(await request<unknown>(path + (query.size ? '?' + query : ''), {method,body}, options))
  } catch (error) {
   if (error instanceof ApiError && error.status === 409) {
    throw new ApiError('Conflito ao salvar. Confira a revisão e o estado atuais do laudo antes de tentar novamente.', 409)

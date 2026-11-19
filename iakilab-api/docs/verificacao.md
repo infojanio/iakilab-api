@@ -87,3 +87,9 @@ Exemplos de fluxo:
 - Revisão de laudos: `http/controllers/report-drafts/routes.ts` → `validate-report.ts` → `use-cases/reports/manage-report-drafts.ts` → transição condicional no repositório Prisma, com histórico e escopo por laboratório.
 
 A composição mantém casos de uso relacionados agrupados por domínio e compartilha os repositórios Prisma existentes. Foram preservados URLs, payloads, status HTTP, configuração de sessão, schema, migrations e consumo pelo painel. Validação local com TypeScript, build e 37 testes da API, incluindo PostgreSQL com contas de dois laboratórios.
+
+## Emissão, consulta e acervo legado em 19/11/2026
+
+Implementados emissão de laudos estruturados e de PDFs importados, QR, assinatura e verificação A1, consulta pública, download verificado e importador histórico. Veja [configuração, contratos e migração](emissao-e-legado.md).
+
+Homologação local com PostgreSQL e PKCS#12 sintético. Verificados falha sem publicação, nova emissão, concorrência, assinatura criptográfica dos bytes baixados nos três tipos de laudo, leitura do QR no PDF assinado, recusa de bytes adulterados, original intacto, isolamento de laboratório e importação histórica repetida com compatibilidade de nomes. Certificado real, configuração da Hostinger, links já entregues e aspecto dos modelos oficiais ainda dependem de homologação.

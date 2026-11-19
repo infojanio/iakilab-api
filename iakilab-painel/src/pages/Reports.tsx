@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react'
 import {Link,useLocation,useParams,useSearchParams} from 'react-router-dom'
-import {Plus,ArrowUpRight,ChevronLeft,ChevronRight,LockKeyhole,FileText} from 'lucide-react'
+import {Plus,ArrowUpRight,ChevronLeft,ChevronRight,FileText} from 'lucide-react'
 import {Heading,Panel,Badge,SearchBox,Status,Empty,Skeleton,Modal,usePaths} from '../components/common'
 import {demoReports,date,statusLabels} from '../data/demo'
 import {reportsService} from '../services/reports'
@@ -21,13 +21,14 @@ function ReportDetailContent({id}:{id?:string}){
  const {demo,base}=usePaths()
  const {user}=useAuth()
  const location=useLocation()
+ const [confirmIssue,setConfirmIssue]=useState(false)
  const [preview,setPreview]=useState(false)
  const [feedback,setFeedback]=useState<string>(location.state?.feedback||'')
  const [actionError,setActionError]=useState('')
  const [pending,setPending]=useState(false)
  const saving=useRef(false)
  const [reload,setReload]=useState(0)
- async function transition(action:'submit'|'validate'|'return'){
+ async function transition(action:'submit'|'validate'|'return'|'issue'){
   if(demo||!user||!report?.revision||saving.current)return
   saving.current=true
   setPending(true)
@@ -35,7 +36,7 @@ function ReportDetailContent({id}:{id?:string}){
   setActionError('')
   try{
    await reportsService.transition(report.id,user.laboratoryId||'',report.revision,action)
-   setFeedback({submit:'Laudo enviado para revisão.',validate:'Laudo validado.',return:'Laudo devolvido para ajustes.'}[action])
+   setFeedback({submit:'Laudo enviado para revisão.',validate:'Laudo validado.',return:'Laudo devolvido para ajustes.',issue:'Laudo emitido, assinado e disponível para consulta.'}[action])
    setLoading(true)
    setReload(value=>value+1)
   }catch(error){
@@ -44,6 +45,7 @@ function ReportDetailContent({id}:{id?:string}){
     setLoading(true)
     setReload(value=>value+1)
    }else setActionError(error instanceof Error?error.message:'Não foi possível atualizar o laudo.')
+   if(action==='issue'){setLoading(true);setReload(value=>value+1)}
   }finally{saving.current=false;setPending(false)}
  }
 const [report,setReport]=useState<Report|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');useEffect(()=>{let active=true;setError('');setLoading(true);setReport(null);if(demo){setReport(demoReports.find(r=>r.id===id)||null);setLoading(false);return}reportsService.byId(id||'',user?.laboratoryId||'').then(r=>active&&setReport(r)).catch(e=>active&&setError(e.message)).finally(()=>active&&setLoading(false));return()=>{active=false}},[demo,id,user?.laboratoryId,reload]);const pdf=demo?null:authorizedPdfUrl(report?.signedPdfUrl);const results=Array.isArray(report?.analysisResults)?report.analysisResults:[];
@@ -64,8 +66,16 @@ return <><Link className="back-link" to={base+'/reports'}><ChevronLeft size={16}
    <button className="button" disabled={pending} onClick={()=>void transition('return')}>Devolver para ajustes</button>
    <button className="button primary" disabled={pending} onClick={()=>void transition('validate')}>Validar laudo</button>
   </>}
+  {report.status==='VALIDADO'&&user.role==='ADMIN'&&
+   <button className="button primary" disabled={pending} onClick={()=>setConfirmIssue(true)}>
+    {report.signatureStatus==='FAILED'?'Tentar emissão novamente':'Emitir e assinar'}
+   </button>}
+  {report.publicCode&&<Link className="button" to={'/consulta?code='+encodeURIComponent(report.publicCode)}>Abrir consulta pública</Link>}
   {pending&&<span role="status">Atualizando laudo…</span>}
- </div>}{preview&&draft&&<Modal title="Prévia do laudo" onClose={()=>setPreview(false)}><ReportPreview draft={draft}/></Modal>}
+ </div>}{confirmIssue&&<Modal title="Emitir e publicar laudo" onClose={()=>setConfirmIssue(false)}>
+  <p>O PDF final ficará acessível a quem tiver o link ou o QR Code após a verificação da assinatura.</p>
+  <button className="button primary" onClick={()=>{setConfirmIssue(false);void transition('issue')}}>Confirmar emissão</button>
+ </Modal>}{preview&&draft&&<Modal title="Prévia do laudo" onClose={()=>setPreview(false)}><ReportPreview draft={draft}/></Modal>}
  {loading?<Skeleton/>:error?<div className="error">{error}</div>:!report?<Empty title="Laudo não encontrado"/>:<><div className="workflow">{Object.entries(statusLabels).map(([value,label],i)=><div key={value} className={report.status===value?'selected':''}><span>{i+1}</span>{label}{i<3&&<ChevronRight size={16}/>}</div>)}</div><div className="detail-grid"><Panel title="Cliente e identificação" action={<Status value={report.status}/>}><dl><dt>Cliente</dt><dd>{report.customerName||'—'}</dd><dt>CPF / CNPJ</dt><dd>{report.document||'—'}</dd><dt>E-mail</dt><dd>{report.email||'—'}</dd><dt>Telefone</dt><dd>{report.phone||'—'}</dd><dt>Endereço</dt><dd>{report.address||'—'}</dd><dt>Emissão</dt><dd>{date(report.createdAt)}</dd></dl></Panel><Panel title="Amostra e coleta"><dl><dt>Tipo</dt><dd>{report.sampleType||'—'}</dd><dt>Origem</dt><dd>{report.sampleOrigin||'—'}</dd><dt>Data de entrada</dt><dd>{date(report.entryDate)}</dd><dt>Coleta</dt><dd>{date(report.collectionDate)} · {report.collectionTime||'—'}</dd><dt>Coletor</dt><dd>{report.collectionAgent||'—'}</dd><dt>Responsável técnico</dt><dd>{report.technicianName||'—'}</dd></dl></Panel></div><Panel title="Resultados laboratoriais" subtitle={demo?'Valores fictícios; referências apenas ilustrativas.':undefined}><div className="table-wrap"><table><thead><tr><th>PARÂMETRO</th><th>RESULTADO</th><th>UNIDADE</th><th>REFERÊNCIA</th></tr></thead><tbody>{results.map((r,i)=><tr key={i}><td>{r.parameter}</td><td><strong>{r.result}</strong></td><td>{r.unit}</td><td>{r.reference}</td></tr>)}</tbody></table>{!results.length&&<Empty title="Resultados não disponíveis neste formato"/>}</div><div className="panel-note"><strong>Observações</strong><p>{report.notes||'Nenhuma observação registrada.'}</p></div></Panel><div className="detail-grid"><Panel title="Documento PDF"><AuthorizedReportPdf key={`${user?.laboratoryId}:${report.id}:${pdf}`} url={pdf} reportName={report.identification||report.id} demo={demo}/></Panel>{!demo&&report.originalPdfUrl&&<Panel title="PDF original privado"><AuthorizedReportPdf
  key={report.id+':original'} url={authorizedPdfUrl(report.originalPdfUrl)} reportName={(report.identification||report.id)+'-original'} demo={false}/></Panel>}
- <Panel title="Histórico de validação">{report.validationHistory?.length?<div className="history">{report.validationHistory.map((h,i)=><div key={i}><span className="online-dot"/><strong>{h.description}</strong><small>{date(h.date)}</small></div>)}</div>:<Empty title="Sem histórico disponível"/>}<div className="panel-note"><button className="button primary" disabled title="Exige endpoint de assinatura autorizado"><LockKeyhole size={15}/>Assinar documento</button></div></Panel></div></>}</>}
+ <Panel title="Histórico de validação">{report.validationHistory?.length?<div className="history">{report.validationHistory.map((h,i)=><div key={i}><span className="online-dot"/><strong>{h.description}</strong><small>{date(h.date)}</small></div>)}</div>:<Empty title="Sem histórico disponível"/>}</Panel></div></>}</>}

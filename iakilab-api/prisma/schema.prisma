@@ -113,6 +113,11 @@ model Report {
   draftData Json
   revision Int @default(1)
   legacyPublicId String? @unique
+  legacyPdfFilename String? @unique
+  publicCode String? @unique
+  issuanceAttempt String? @db.Uuid
+  issuanceStartedAt DateTime?
+  issuanceFailedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)

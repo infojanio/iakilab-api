@@ -1,3 +1,5 @@
+import { reportIssuanceRoutes } from './http/controllers/report-issuance/routes.js'
+import type { makeReportIssuanceUseCases } from './use-cases/_factories/make-report-issuance-use-cases.js'
 import multipart from '@fastify/multipart'
 import { Prisma } from '@prisma/client'
 import Fastify from 'fastify'
@@ -29,6 +31,7 @@ export async function buildApp(
     auth: AuthService
     reports: ReadReports
     storage: PdfStorage
+    issuance?: ReturnType<typeof makeReportIssuanceUseCases>
     laboratory?: ReturnType<typeof makeLaboratoryUseCases>
     platform?: ReturnType<typeof makePlatformUseCases>
   },
@@ -39,6 +42,7 @@ export async function buildApp(
       ? {
           redact: [
             'req.headers.authorization',
+            'req.url',
             'req.headers.cookie',
             'res.headers.set-cookie',
           ],
@@ -65,6 +69,7 @@ export async function buildApp(
   app.addHook('onSend', async (_req, reply) => {
     reply.header('Cache-Control', 'no-store')
     reply.header('X-Content-Type-Options', 'nosniff')
+    reply.header('Referrer-Policy', 'no-referrer')
   })
   app.setErrorHandler((e, req, reply) => {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002')
@@ -100,6 +105,7 @@ export async function buildApp(
   await authRoutes(app, services.auth, config)
   await usersRoutes(app, services.auth)
   await reportsRoutes(app, services.auth, services.reports, services.storage)
+  if (services.issuance) await reportIssuanceRoutes(app, services.auth, services.issuance)
   if (services.laboratory) {
     await clientsRoutes(app, services.auth, services.laboratory.clients)
     await samplesRoutes(app, services.auth, services.laboratory.samples)

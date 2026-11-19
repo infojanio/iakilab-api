@@ -78,3 +78,27 @@ test('Authenticated report writes use the pilot routes, revisions and multipart 
     globalThis.fetch = previousFetch
   }
 })
+
+test('Public verification omits session credentials and builds a download URL on the API origin', async () => {
+  const {publicReportsService} = await moduleOf('src/services/resources.ts', {
+    VITE_API_URL: 'https://api.example.test',
+    VITE_SECURE_API_ENABLED: 'true',
+  })
+  const previous = globalThis.fetch
+  const code = 'k'.repeat(64)
+  try {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, 'https://api.example.test/public/reports/' + code)
+      assert.equal(options.credentials, 'omit')
+      assert.equal(options.headers.has('Authorization'), false)
+      return new Response(JSON.stringify({
+        identification:'I-01',signatureStatus:'VERIFIED',issuedAt:'2026-11-19T00:00:00.000Z',
+        downloadPath:'https://untrusted.example.test/file',
+      }))
+    }
+    const report = await publicReportsService.verify(code)
+    assert.equal(report.downloadUrl, 'https://api.example.test/public/reports/' + code + '/pdf')
+  } finally {
+    globalThis.fetch = previous
+  }
+})

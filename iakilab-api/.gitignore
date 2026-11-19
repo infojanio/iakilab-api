@@ -11,3 +11,5 @@ coverage/
 *.key
 *.pdf
 *.log
+.venv/
+__pycache__/

@@ -3,7 +3,7 @@ export type ReportStatus = 'RASCUNHO' | 'AGUARDANDO_VALIDACAO' | 'VALIDADO' | 'A
 export type AnalysisResult = { parameter: string; result: string; unit: string; reference: string }
 // Campos preservados do contrato Report LabMoura. Confirmar schema no backend antes de habilitar gravação.
 export type Report = {
- revision?:number; reportKind?:ReportKind; draftData?:Partial<StructuredReportDraftDTO>;
+ revision?:number; publicCode?:string; signatureStatus?:'NOT_REQUESTED'|'PENDING'|'FAILED'|'VERIFIED'; reportKind?:ReportKind; draftData?:Partial<StructuredReportDraftDTO>;
  id: string; identification?: string; laboratoryId?: string; status?: ReportStatus;
  createdAt?: string; customerName?: string; document?: string; address?: string;
  phone?: string; email?: string; technicianName?: string; sampleOrigin?: string;

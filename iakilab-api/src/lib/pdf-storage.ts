@@ -7,6 +7,9 @@ export interface PdfStorage { read(key:string,sha256:string,byteLength:number):P
 export class LocalPdfStorage implements PdfStorage {
  constructor(private root:string){}
  async saveOriginal(laboratoryId:string,bytes:Buffer){
+  return this.savePdf(laboratoryId,bytes)
+ }
+ async savePdf(laboratoryId:string,bytes:Buffer){
   if(!/^[a-f0-9-]{36}$/i.test(laboratoryId)||bytes.length<8||bytes.length>20*1024*1024||bytes.subarray(0,5).toString()!=='%PDF-')
    throw new AppError(422,'INVALID_PDF')
   const folder=path.resolve(this.root,laboratoryId)

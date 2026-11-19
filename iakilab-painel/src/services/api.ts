@@ -13,26 +13,35 @@ async function readResponse<T>(
   path: string,
   init: RequestInit,
   decode: (response: Response) => Promise<T>,
+  {authenticated = true, timeoutMs = 15000} = {},
 ): Promise<T> {
   if (!SECURE_API_ENABLED) return notAvailable()
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 15000)
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
-  const tokenAtRequest = accessToken
+  const tokenAtRequest = authenticated ? accessToken : null
   if (tokenAtRequest) headers.set('Authorization', 'Bearer ' + tokenAtRequest)
   try {
     const response = await fetch(API_URL + path, {
-      ...init, headers, signal: controller.signal, credentials: 'include', redirect: 'error',
+      ...init, headers, signal: controller.signal, credentials: authenticated ? 'include' : 'omit', redirect: 'error',
     })
     if (!response.ok) {
-      if (response.status === 401 && accessToken === tokenAtRequest && path !== '/sessions') {
+      if (authenticated && response.status === 401 && accessToken === tokenAtRequest && path !== '/sessions') {
         setAccessToken(null)
         window.dispatchEvent(new Event('iakilab:unauthorized'))
       }
-      const message = {
+      const detail = path.endsWith('/issue') || path.includes('/issue?')
+        ? await response.json().catch(() => null)
+        : null
+      const message = ({
+        LABORATORY_SIGNER_UNAVAILABLE: 'O certificado deste laboratório ainda não foi configurado.',
+        REPORT_SIGNING_FAILED: 'A assinatura falhou. O laudo continua privado e pode ser emitido novamente.',
+        ALREADY_SIGNED_ORIGINAL: 'O PDF original já contém uma assinatura.',
+        REPORT_PDF_CANNOT_BE_RENDERED: 'Não foi possível preparar o PDF original.',
+      } as Record<string,string>)[detail?.code] ?? {
         401: path === '/sessions' ? 'E-mail ou senha inválidos.' : 'Sessão expirada. Entre novamente.',
         403: 'Acesso não autorizado.',
         404: 'Registro não encontrado.',
@@ -49,12 +58,12 @@ async function readResponse<T>(
   }
 }
 
-export function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export function request<T>(path: string, init: RequestInit = {}, options?: {authenticated?:boolean;timeoutMs?:number}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
   return readResponse(path, { ...init, headers }, async response => (
     response.status === 204 ? undefined as T : await response.json() as T
-  ))
+  ), options)
 }
 
 export function authorizedPdfUrl(value?: string): string | null {
