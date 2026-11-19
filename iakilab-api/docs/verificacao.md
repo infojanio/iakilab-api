@@ -54,3 +54,25 @@ O painel autenticado expõe revisão para ADMIN. ANALISTA pode preparar e enviar
 As duas migrations originais foram aplicadas em PostgreSQL 16 local, no banco `iakilab_test`. Os builds passaram. Foram executados 37 testes de API e 14 testes do painel. Os casos com dois laboratórios cobrem leitura e edição cruzadas, perfil sem permissão, edição desatualizada, validação concorrente, histórico e importação de PDF privado.
 
 Pendente confirmar o fluxo visual no navegador, a sessão entre as origens publicadas e a emissão com A1. O original importado tem prévia local antes do envio. A API existente de download serve o PDF final verificado.
+
+## Consolidação do IAkiLab em 19/11/2026
+
+A branch `trabalho/iaki-lab` conserva os dois pacotes do piloto:
+
+- `iakilab-api/` reúne Fastify, Prisma, PostgreSQL, autenticação, permissões por vínculo, operação laboratorial e gestão SaaS.
+- `iakilab-painel/` é a exportação React/Vite conectada a essa API pelas variáveis `VITE_API_URL` e `VITE_SECURE_API_ENABLED`.
+
+Referências consultadas: `infojanio/iaki_backend:stackblitz` (estrutura em camadas, autenticação, planos e assinaturas), `infojanio/iaki_painel:stackblitz` (cadastro, edição e escolha de plano), `infojanio/labmoura-api:main` (PDF, assinatura e QR) e `infojanio/labmoura-web:vps` (consulta histórica por ID e download). O destino `infojanio/iakilab-api` estava sem branch remota na inspeção.
+
+| Área autenticada | Operações |
+|---|---|
+| Plataforma | `GET/POST /laboratories`, `GET/POST /plans`, `PATCH /plans/:id`, `GET/POST /subscriptions`, exclusivos de SUPER_ADMIN |
+| Laboratório | Lista, criação e edição de clientes e amostras conforme perfil, `GET /dashboard/metrics` e listagem recente de laudos |
+| Equipe | `GET /users?laboratoryId=…`. ADMIN consulta a própria equipe. SUPER_ADMIN seleciona um laboratório ativo |
+| Laudos | Rascunho, importação privada, revisão e histórico do piloto. O detalhe permite reabrir o original importado em `GET /pdf/:id?variant=original` com bearer e validação de integridade |
+
+O preço é recebido como decimal textual e persistido como Decimal. A configuração de armazenamento usa GB decimais. A vigência da assinatura usa datas UTC com início inclusivo e fim exclusivo. Uma renovação pode ser cadastrada como outro período, mantendo o histórico. O cadastro recusa sobreposições entre períodos ativos do mesmo laboratório e conflitos concorrentes. Os limites são cadastrais nesta etapa.
+
+A branch `vps` do LabMoura consulta laudos por `/reports/:id` e monta URLs legadas de PDF por nome. Antes de migrar, verificar na homologação os dois formatos de URL contra dados sintéticos e conferir um QR histórico, sem reaproveitar arquivos reais como fixtures. Os links existentes continuam atendidos pelo legado. A nova consulta pública, emissão A1, convites de usuários, suspensão comercial e aplicação de franquias têm implementação pendente.
+
+Validação local em PostgreSQL 16: schema com as duas migrations do piloto, build e 37 testes da API, build e 14 testes do painel. A integração verificou recusa de operações de plataforma para ADMIN local, bloqueio de sobreposição concorrente, acesso autenticado ao PDF original e recusa entre laboratórios. A interface no navegador e o ambiente da Hostinger não foram validados nesta etapa.

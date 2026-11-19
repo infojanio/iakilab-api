@@ -20,12 +20,15 @@ const enabled = process.env.RUN_POSTGRES_TESTS === 'true'
 describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
   const ids: string[] = []
   const users: string[] = []
+  const planIds: string[] = []
   let db: PrismaClient
   let storageDir: string
 
   afterAll(async () => {
     if (db) {
       const laboratoryId = { in: ids }
+      await db.subscription.deleteMany({ where: { laboratoryId } })
+      await db.plan.deleteMany({ where: { id: { in: planIds } } })
       await db.reportEvent.deleteMany({ where: { laboratoryId } })
       await db.reportFile.deleteMany({ where: { laboratoryId } })
       await db.reportVersion.deleteMany({ where: { laboratoryId } })
@@ -82,6 +85,24 @@ describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
       const laboratories = await app.inject({ url: '/laboratories', headers: platform })
       expect(laboratories.statusCode).toBe(200)
       expect(laboratories.json()).toEqual(expect.arrayContaining(ids.map(id => expect.objectContaining({ id }))))
+      const labPayload = { name: 'Laboratório de teste', slug: randomUUID() }
+      expect((await app.inject({ method: 'POST', url: '/laboratories', headers: admin, payload: labPayload })).statusCode).toBe(403)
+      const registeredLab = await app.inject({ method: 'POST', url: '/laboratories', headers: platform, payload: labPayload })
+      expect(registeredLab.statusCode).toBe(201)
+      ids.push(registeredLab.json().id)
+      const plan = { name: 'Plano piloto', price: '150.25', users: 5, reports: 100, storageGB: 2, active: true }
+      expect((await app.inject({ method: 'POST', url: '/plans', headers: admin, payload: plan })).statusCode).toBe(403)
+      const registeredPlan = await app.inject({ method: 'POST', url: '/plans', headers: platform, payload: plan })
+      expect(registeredPlan.statusCode).toBe(201)
+      const planId = registeredPlan.json().id
+      planIds.push(planId)
+      expect((await app.inject({ method: 'PATCH', url: '/plans/' + planId, headers: platform, payload: { ...plan, reports: 120 } })).statusCode).toBe(200)
+      expect((await app.inject({ url: '/plans', headers: platform })).json()).toContainEqual(expect.objectContaining({ id: planId, price: 150.25, reports: 120, storageGB: 2 }))
+      const subscription = { laboratoryId: registeredLab.json().id, planId, startsAt: '2026-11-01', expiresAt: '2027-01-01' }
+      expect((await app.inject({ method: 'POST', url: '/subscriptions', headers: admin, payload: subscription })).statusCode).toBe(403)
+      expect((await app.inject({ method: 'POST', url: '/subscriptions', headers: platform, payload: { ...subscription, expiresAt: subscription.startsAt } })).statusCode).toBe(400)
+      const bookings = await Promise.all([1, 2].map(() => app.inject({ method: 'POST', url: '/subscriptions', headers: platform, payload: subscription })))
+      expect(bookings.map(result => result.statusCode).sort()).toEqual([201, 409])
       const client = await app.inject({ method: 'POST', url: '/clients', headers: admin, payload: { name: 'Cliente A', email: 'a@example.test', phone: '123', document: '', address: '' } })
       expect(client.statusCode).toBe(201)
       expect((await app.inject({ method: 'PATCH', url: '/clients/' + client.json().id, headers: admin, payload: { name: 'Novo nome' } })).json().phone).toBe('123')
@@ -127,6 +148,15 @@ describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
       expect(imported.statusCode, imported.body).toBe(201)
       expect(imported.json().signedPdfUrl).toBeUndefined()
       expect((await app.inject({ url: '/pdf/' + imported.json().id, headers: admin })).statusCode).toBe(409)
+      const importedDetail = await app.inject({ url: '/reports/' + imported.json().id, headers: admin })
+      const originalUrl = importedDetail.json().originalPdfUrl
+      expect(originalUrl).toBe('/pdf/' + imported.json().id + '?variant=original')
+      const original = await app.inject({ url: originalUrl, headers: admin })
+      expect(original.statusCode).toBe(200)
+      expect(original.headers['content-type']).toContain('application/pdf')
+      expect(original.body).toContain('%PDF-1.7')
+      expect((await app.inject({ url: originalUrl, headers: other })).statusCode).toBe(404)
+      expect((await app.inject({ url: originalUrl })).statusCode).toBe(401)
     } finally { await app.close() }
   }, 15000)
 })

@@ -9,7 +9,7 @@ export type Report = {
  phone?: string; email?: string; technicianName?: string; sampleOrigin?: string;
  sampleType?: string; entryDate?: string; collectionDate?: string; collectionTime?: string;
  collectionAgent?: string; analysisResults?: AnalysisResult[] | unknown; notes?: string;
- sampleImageUrls?: string[]; signedPdfUrl?: string;
+ sampleImageUrls?: string[]; signedPdfUrl?: string; originalPdfUrl?: string;
  validationHistory?: {date:string; description:string}[];
 }
 export type ReportsPage = { reports: Report[]; totalPages: number; total?: number }
@@ -19,6 +19,6 @@ export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'ANALISTA'
 export type User = {id:string; name:string; email:string; role:Role; laboratoryId?:string; laboratoryName?:string}
 export type ClientDTO = {id:string; laboratoryId:string; name:string; document:string; email:string; phone:string; address:string}
 export type SampleDTO = {id:string; laboratoryId:string; identification:string; type:string; origin:string; collectedAt:string; status:string; analyses:string[]}
-export type LaboratoryDTO = {id:string; name:string; document:string; responsible:string; planId:string; subscriptionStatus:string}
-export type PlanDTO = {id:string; name:string; price:number; users:number; reports:number; storageGB:number; features:string[]}
+export type LaboratoryDTO = {id:string; name:string; document:string; responsible:string; planId:string; subscriptionStatus:string;active?:boolean}
+export type PlanDTO = {id:string; name:string; price:number; users:number; reports:number; storageGB:number; features:string[];active?:boolean}
 export type SubscriptionDTO = {id:string; laboratoryId:string; planId:string; startsAt:string; expiresAt:string; status:string; autoRenew:boolean}
