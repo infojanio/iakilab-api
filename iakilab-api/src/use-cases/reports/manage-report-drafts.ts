@@ -1,3 +1,5 @@
+import { PDFDocument } from 'pdf-lib'
+import { hasPdfSignature } from '../../lib/pdf-signature-fields.js'
 import type {AuthService} from '../auth/auth-service.js'
 import type {DraftData, LaboratoryRepository, DraftTransition} from '../../repositories/laboratory-repository.js'
 import {requireLaboratoryAdmin, requireRecord, type Scope} from '../laboratory/scope.js'
@@ -29,6 +31,10 @@ export class ManageReportDrafts {
 
   async importPdf(scope: Scope, data: Pick<DraftData, 'identification' | 'customerName'> & { notes: string }, bytes: Buffer) {
     const laboratoryId = await this.tenant(scope)
+    const signed = await PDFDocument.load(bytes)
+      .then(hasPdfSignature)
+      .catch(() => { throw new AppError(422, 'INVALID_PDF') })
+    if (signed) throw new AppError(422, 'ALREADY_SIGNED_ORIGINAL')
     const { discard, ...file } = await this.storage.saveOriginal(laboratoryId, bytes)
     try {
       return await this.repository.createDraft(laboratoryId, scope.actor.user.id, { identification: data.identification, customerName: data.customerName, kind: 'PDF_UPLOAD', draftData: data }, file)

@@ -4,6 +4,7 @@ import {Plus,ArrowUpRight,ChevronLeft,ChevronRight,FileText} from 'lucide-react'
 import {Heading,Panel,Badge,SearchBox,Status,Empty,Skeleton,Modal,usePaths} from '../components/common'
 import {demoReports,date,statusLabels} from '../data/demo'
 import {reportsService} from '../services/reports'
+import {describeSigner, issuanceFailureMessage, type SignerStatus} from '../services/report-signing'
 import {ApiError,authorizedPdfUrl} from '../services/api'
 import {AuthorizedReportPdf} from '../components/AuthorizedReportPdf'
 import ReportPreview from '../components/ReportPreview'
@@ -28,6 +29,19 @@ function ReportDetailContent({id}:{id?:string}){
  const [pending,setPending]=useState(false)
  const saving=useRef(false)
  const [reload,setReload]=useState(0)
+ const [signer,setSigner]=useState<SignerStatus>()
+ const [signerLoadError,setSignerLoadError]=useState(false)
+ const canIssue = !demo && user?.role === 'ADMIN'
+ useEffect(() => {
+  if (!canIssue) return
+  let active = true
+  setSigner(undefined)
+  setSignerLoadError(false)
+  reportsService.signerStatus(user?.laboratoryId || '')
+   .then(status => { if (active) setSigner(status) })
+   .catch(() => { if (active) setSignerLoadError(true) })
+  return () => { active = false }
+ }, [canIssue, user?.laboratoryId, reload])
  async function transition(action:'submit'|'validate'|'return'|'issue'){
   if(demo||!user||!report?.revision||saving.current)return
   saving.current=true
@@ -56,6 +70,13 @@ const [report,setReport]=useState<Report|null>(null);const [loading,setLoading]=
 return <><Link className="back-link" to={base+'/reports'}><ChevronLeft size={16}/>Voltar aos laudos</Link><Heading eyebrow="DOCUMENTO LABORATORIAL" title={report?.identification||'Detalhes do laudo'} description="Dados da amostra, resultados e rastreabilidade em um só lugar." />
  {feedback&&<p role="status">{feedback}</p>}
  {actionError&&<p className="error" role="alert">{actionError}</p>}
+ {!actionError&&!demo&&report?.status==='VALIDADO'&&report.signatureStatus==='FAILED'&&
+  <p className="error" role="alert">{issuanceFailureMessage(report.issuanceFailureCode || '')}</p>}
+ {canIssue&&report?.status==='VALIDADO'&&<Panel title="Certificado A1 do laboratório">
+  <Link className="text-button" to={base+'/certificate-a1'}>Configurar certificado A1</Link>
+  <p role="status">{signer ? describeSigner(signer) : signerLoadError ? 'Não foi possível consultar o certificado.' : 'Consultando o certificado…'}</p>
+  {signer&&'validFrom' in signer&&<p>Validade de {certificateDate(signer.validFrom)} a {certificateDate(signer.validUntil)}.</p>}
+ </Panel>}
  {!demo&&!loading&&!error&&report?.revision&&user&&<div className="modal-actions">
   {draft&&<button className="button" onClick={()=>setPreview(true)}>Conferir modelo</button>}
   {report.status==='RASCUNHO'&&<>
@@ -79,3 +100,7 @@ return <><Link className="back-link" to={base+'/reports'}><ChevronLeft size={16}
  {loading?<Skeleton/>:error?<div className="error">{error}</div>:!report?<Empty title="Laudo não encontrado"/>:<><div className="workflow">{Object.entries(statusLabels).map(([value,label],i)=><div key={value} className={report.status===value?'selected':''}><span>{i+1}</span>{label}{i<3&&<ChevronRight size={16}/>}</div>)}</div><div className="detail-grid"><Panel title="Cliente e identificação" action={<Status value={report.status}/>}><dl><dt>Cliente</dt><dd>{report.customerName||'—'}</dd><dt>CPF / CNPJ</dt><dd>{report.document||'—'}</dd><dt>E-mail</dt><dd>{report.email||'—'}</dd><dt>Telefone</dt><dd>{report.phone||'—'}</dd><dt>Endereço</dt><dd>{report.address||'—'}</dd><dt>Emissão</dt><dd>{date(report.createdAt)}</dd></dl></Panel><Panel title="Amostra e coleta"><dl><dt>Tipo</dt><dd>{report.sampleType||'—'}</dd><dt>Origem</dt><dd>{report.sampleOrigin||'—'}</dd><dt>Data de entrada</dt><dd>{date(report.entryDate)}</dd><dt>Coleta</dt><dd>{date(report.collectionDate)} · {report.collectionTime||'—'}</dd><dt>Coletor</dt><dd>{report.collectionAgent||'—'}</dd><dt>Responsável técnico</dt><dd>{report.technicianName||'—'}</dd></dl></Panel></div><Panel title="Resultados laboratoriais" subtitle={demo?'Valores fictícios; referências apenas ilustrativas.':undefined}><div className="table-wrap"><table><thead><tr><th>PARÂMETRO</th><th>RESULTADO</th><th>UNIDADE</th><th>REFERÊNCIA</th></tr></thead><tbody>{results.map((r,i)=><tr key={i}><td>{r.parameter}</td><td><strong>{r.result}</strong></td><td>{r.unit}</td><td>{r.reference}</td></tr>)}</tbody></table>{!results.length&&<Empty title="Resultados não disponíveis neste formato"/>}</div><div className="panel-note"><strong>Observações</strong><p>{report.notes||'Nenhuma observação registrada.'}</p></div></Panel><div className="detail-grid"><Panel title="Documento PDF"><AuthorizedReportPdf key={`${user?.laboratoryId}:${report.id}:${pdf}`} url={pdf} reportName={report.identification||report.id} demo={demo}/></Panel>{!demo&&report.originalPdfUrl&&<Panel title="PDF original privado"><AuthorizedReportPdf
  key={report.id+':original'} url={authorizedPdfUrl(report.originalPdfUrl)} reportName={(report.identification||report.id)+'-original'} demo={false}/></Panel>}
  <Panel title="Histórico de validação">{report.validationHistory?.length?<div className="history">{report.validationHistory.map((h,i)=><div key={i}><span className="online-dot"/><strong>{h.description}</strong><small>{date(h.date)}</small></div>)}</div>:<Empty title="Sem histórico disponível"/>}</Panel></div></>}</>}
+
+function certificateDate(instant: string) {
+ return new Intl.DateTimeFormat('pt-BR', {dateStyle:'short', timeStyle:'short'}).format(new Date(instant))
+}

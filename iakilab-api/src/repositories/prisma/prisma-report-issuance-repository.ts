@@ -12,7 +12,7 @@ export class PrismaReportIssuanceRepository implements ReportIssuanceRepository 
   async claim(claim: IssuanceClaim, now: Date, expiredBefore: Date) {
     const updated = await this.db.report.updateMany({
       where: { ...candidate(claim), OR: [{ issuanceAttempt: null }, { issuanceStartedAt: { lt: expiredBefore } }] },
-      data: { issuanceAttempt: claim.attempt, issuanceStartedAt: now, issuanceFailedAt: null },
+      data: { issuanceAttempt: claim.attempt, issuanceStartedAt: now, issuanceFailedAt: null, issuanceFailureCode: null },
     })
     return updated.count === 1
   }
@@ -24,7 +24,7 @@ export class PrismaReportIssuanceRepository implements ReportIssuanceRepository 
         where: { ...candidate(claim), issuanceAttempt: claim.attempt },
         data: {
           stage: 'ISSUED', revision: { increment: 1 }, publicCode: code,
-          issuanceAttempt: null, issuanceStartedAt: null, issuanceFailedAt: null,
+          issuanceAttempt: null, issuanceStartedAt: null, issuanceFailedAt: null, issuanceFailureCode: null,
         },
       })
       if (updated.count === 0) return false
@@ -53,11 +53,11 @@ export class PrismaReportIssuanceRepository implements ReportIssuanceRepository 
     })
   }
 
-  async fail(claim: IssuanceClaim) {
+  async fail(claim: IssuanceClaim, code: string) {
     await this.db.$transaction(async tx => {
       const updated = await tx.report.updateMany({
         where: { ...candidate(claim), issuanceAttempt: claim.attempt },
-        data: { issuanceAttempt: null, issuanceStartedAt: null, issuanceFailedAt: new Date(), revision: { increment: 1 } },
+        data: { issuanceAttempt: null, issuanceStartedAt: null, issuanceFailedAt: new Date(), issuanceFailureCode: code, revision: { increment: 1 } },
       })
       if (updated.count === 1) {
         await tx.reportEvent.create({ data: {

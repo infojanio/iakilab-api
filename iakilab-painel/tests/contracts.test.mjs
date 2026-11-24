@@ -102,3 +102,54 @@ test('Public verification omits session credentials and builds a download URL on
     globalThis.fetch = previous
   }
 })
+
+test('A1 status and issuance failures display actionable messages without raw worker output', async () => {
+  const signing = await moduleOf('src/services/report-signing.ts')
+  const validity = { validFrom: '2026-01-01T00:00:00Z', validUntil: '2026-12-01T00:00:00Z' }
+  assert.match(signing.describeSigner({ ...validity, status: 'VALID', daysUntilExpiry: 60 }), /dentro do período/)
+  assert.match(signing.describeSigner({ ...validity, status: 'EXPIRING_SOON', daysUntilExpiry: 30 }), /30 dias/)
+  assert.match(signing.describeSigner({ ...validity, status: 'EXPIRED', daysUntilExpiry: -1 }), /venceu/)
+  assert.match(signing.describeSigner({ ...validity, status: 'NOT_YET_VALID', daysUntilExpiry: 60 }), /fora do período/)
+  assert.match(signing.describeSigner({ status: 'UNAVAILABLE' }), /ainda não foi configurado/)
+  assert.match(signing.describeSigner({ status: 'INVALID_CONFIGURATION' }), /inválida/)
+  const { reportsService } = await moduleOf('src/services/reports.ts', {
+    VITE_API_URL: 'https://api.example.test',
+    VITE_SECURE_API_ENABLED: 'true',
+  })
+  const previous = globalThis.fetch
+  try {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, 'https://api.example.test/reports/a1/status?laboratoryId=fixture-lab')
+      assert.equal(options.credentials, 'include')
+      return Response.json({ ...validity, status: 'EXPIRING_SOON', daysUntilExpiry: 30 })
+    }
+    assert.equal((await reportsService.signerStatus('fixture-lab')).status, 'EXPIRING_SOON')
+    globalThis.fetch = async () => Response.json({
+      code: 'A1_CERTIFICATE_EXPIRED',
+      message: 'private-worker-output',
+    }, { status: 422 })
+    await assert.rejects(reportsService.transition('fixture-report', 'fixture-lab', 3, 'issue'), {
+      message: signing.issuanceFailureMessage('A1_CERTIFICATE_EXPIRED'),
+    })
+    assert.match(signing.issuanceFailureMessage('REPORT_SIGNATURE_VERIFICATION_FAILED'), /cadeia de confiança.*continua privado/)
+  } finally {
+    globalThis.fetch = previous
+  }
+})
+
+test('PDF import explains duplicate identification without replacing the conflict message', async () => {
+  const { reportsService } = await moduleOf('src/services/reports.ts', {
+    VITE_API_URL: 'https://api.example.test',
+    VITE_SECURE_API_ENABLED: 'true',
+  })
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = async () => Response.json({ code: 'DUPLICATE_RECORD' }, { status: 409 })
+  try {
+    await assert.rejects(reportsService.importPdfDraft({
+      reportKind: 'PDF_UPLOAD', identification: 'PDF-1', customerName: 'Cliente fictício', notes: '',
+      file: new File(['%PDF-1.7'], 'example.pdf'),
+    }, 'fixture-lab'), { status: 409, message: /Já existe um laudo com esse número/ })
+  } finally {
+    globalThis.fetch = previousFetch
+  }
+})

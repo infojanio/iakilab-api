@@ -1,3 +1,5 @@
+import { issuanceFailureMessage, signingErrors } from './report-signing'
+
 export const API_URL = (import.meta.env.VITE_API_URL ?? '').trim().replace(/\/+$/, '')
 export const SECURE_API_ENABLED = import.meta.env.VITE_SECURE_API_ENABLED === 'true' && Boolean(API_URL)
 
@@ -33,15 +35,15 @@ async function readResponse<T>(
         setAccessToken(null)
         window.dispatchEvent(new Event('iakilab:unauthorized'))
       }
-      const detail = path.endsWith('/issue') || path.includes('/issue?')
-        ? await response.json().catch(() => null)
-        : null
-      const message = ({
-        LABORATORY_SIGNER_UNAVAILABLE: 'O certificado deste laboratório ainda não foi configurado.',
-        REPORT_SIGNING_FAILED: 'A assinatura falhou. O laudo continua privado e pode ser emitido novamente.',
-        ALREADY_SIGNED_ORIGINAL: 'O PDF original já contém uma assinatura.',
-        REPORT_PDF_CANNOT_BE_RENDERED: 'Não foi possível preparar o PDF original.',
-      } as Record<string,string>)[detail?.code] ?? {
+      const issuance = path.endsWith('/issue') || path.includes('/issue?')
+      const draftImport = path.startsWith('/reports/drafts/import-pdf')
+      const a1Configuration = path.startsWith('/reports/a1/configuration')
+      const detail = issuance || draftImport || a1Configuration ? await response.json().catch(() => null) : null
+      const known = typeof detail?.code === 'string' && Object.hasOwn(signingErrors, detail.code)
+      const duplicateImport = draftImport && response.status === 409 && detail?.code === 'DUPLICATE_RECORD'
+      const message = (duplicateImport
+        ? 'Já existe um laudo com esse número neste laboratório. Abra o laudo existente na lista ou informe outro número se este for um novo laudo.'
+        : known ? issuance ? issuanceFailureMessage(detail.code) : signingErrors[detail.code] : undefined) ?? {
         401: path === '/sessions' ? 'E-mail ou senha inválidos.' : 'Sessão expirada. Entre novamente.',
         403: 'Acesso não autorizado.',
         404: 'Registro não encontrado.',

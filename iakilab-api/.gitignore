@@ -12,4 +12,5 @@ coverage/
 *.pdf
 *.log
 .venv/
+.local-a1/
 __pycache__/

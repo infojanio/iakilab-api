@@ -1,8 +1,9 @@
 import { resolve } from 'node:path'
 import PDFKit from 'pdfkit'
-import { PDFDocument, PDFName, PDFSignature, StandardFonts, rgb } from 'pdf-lib'
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 import QRCode from 'qrcode'
 import type { ReportRecord } from '../repositories/reports-repository.js'
+import { hasPdfSignature } from './pdf-signature-fields.js'
 import { AppError } from '../domain.js'
 
 const contactFields = {
@@ -79,7 +80,7 @@ export async function renderReportPdf(report: ReportRecord, laboratoryName: stri
   } catch {
     throw new AppError(422, 'REPORT_PDF_CANNOT_BE_RENDERED')
   }
-  if (original && pdf.getForm().getFields().some(field => field instanceof PDFSignature && field.acroField.dict.has(PDFName.of('V')))) {
+  if (original && hasPdfSignature(pdf)) {
     throw new AppError(422, 'ALREADY_SIGNED_ORIGINAL')
   }
   // Verification gets its own page so an imported report never has text covered by a QR.

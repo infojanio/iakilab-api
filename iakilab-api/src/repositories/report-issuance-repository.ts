@@ -12,7 +12,7 @@ export type IssuanceClaim = {
 export interface ReportIssuanceRepository {
   claim(claim: IssuanceClaim, now: Date, expiredBefore: Date): Promise<boolean>
   complete(claim: IssuanceClaim, code: string, file: StoredPdf): Promise<boolean>
-  fail(claim: IssuanceClaim): Promise<void>
+  fail(claim: IssuanceClaim, code: string): Promise<void>
   findPublishedByFilename(filename: string): Promise<ReportRecord | null>
   findPublished(code: string): Promise<ReportRecord | null>
 }

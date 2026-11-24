@@ -1,6 +1,7 @@
 import {Navigate,Route,Routes,Outlet,useLocation} from 'react-router-dom'
 import {AuthProvider,PrivateRoute,useAuth} from './context/AuthContext'
 import Layout from './components/Layout'
+import CertificateA1 from './pages/CertificateA1'
 import Dashboard from './pages/Dashboard'
 import {Reports,ReportDetail} from './pages/Reports'
 import NewReport,{EditReport} from './pages/NewReport'
@@ -8,7 +9,7 @@ import {Resources,Plans,PlatformDashboard,Validation,Settings} from './pages/Res
 import {Login,PublicConsult} from './pages/Public'
 function LabGate(){const {user}=useAuth();return user?.role==='SUPER_ADMIN'?<Navigate to="/platform" replace/>:<Outlet/>}
 function LabIndex(){const {user}=useAuth();return user?.role==='SUPER_ADMIN'?<Navigate to="/platform" replace/>:<Dashboard/>}
-function LabRoutes(){return <><Route index element={<LabIndex/>}/><Route path="reports" element={<Reports/>}/><Route path="reports/new" element={<NewReport/>}/><Route path="reports/:id" element={<ReportDetail/>}/><Route path="reports/:id/edit" element={<EditReport/>}/><Route path="clients" element={<Resources type="clients"/>}/><Route path="samples" element={<Resources type="samples"/>}/><Route path="validation" element={<Validation/>}/><Route path="users" element={<Resources type="users"/>}/><Route path="settings" element={<Settings/>}/><Route path="laudos" element={<Legacy target="reports"/>}/><Route path="laudos/:id" element={<LegacyDetail/>}/><Route path="novo" element={<Legacy target="reports/new"/>}/><Route path="clientes" element={<Legacy target="clients"/>}/><Route path="amostras" element={<Legacy target="samples"/>}/><Route path="validacao" element={<Legacy target="validation"/>}/><Route path="configuracoes" element={<Legacy target="settings"/>}/></>}
+function LabRoutes(){return <><Route index element={<LabIndex/>}/><Route path="reports" element={<Reports/>}/><Route path="reports/new" element={<NewReport/>}/><Route path="certificate-a1" element={<CertificateA1/>}/><Route path="reports/:id" element={<ReportDetail/>}/><Route path="reports/:id/edit" element={<EditReport/>}/><Route path="clients" element={<Resources type="clients"/>}/><Route path="samples" element={<Resources type="samples"/>}/><Route path="validation" element={<Validation/>}/><Route path="users" element={<Resources type="users"/>}/><Route path="settings" element={<Settings/>}/><Route path="laudos" element={<Legacy target="reports"/>}/><Route path="laudos/:id" element={<LegacyDetail/>}/><Route path="novo" element={<Legacy target="reports/new"/>}/><Route path="clientes" element={<Legacy target="clients"/>}/><Route path="amostras" element={<Legacy target="samples"/>}/><Route path="validacao" element={<Legacy target="validation"/>}/><Route path="configuracoes" element={<Legacy target="settings"/>}/></>}
 import {useParams} from 'react-router-dom'
 function Legacy({target}:{target:string}){const {pathname}=useLocation();return <Navigate to={(pathname.startsWith('/demo')?'/demo/app/':'/app/')+target} replace/>}
 function LegacyDetail(){const {id}=useParams();return <Legacy target={'reports/'+id}/>}

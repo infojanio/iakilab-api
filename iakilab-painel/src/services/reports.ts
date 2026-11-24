@@ -1,4 +1,5 @@
 import {ApiError,request,notAvailable} from './api'
+import type {SignerStatus} from './report-signing'
 import type {Report,ReportsFilter,ReportsPage} from '../types/report'
 import type {StructuredReportDraftDTO,PdfImportDraftDTO} from '../types/report-draft'
 function record(value:unknown):Record<string,unknown>{if(!value || typeof value!=='object'||Array.isArray(value))throw new Error('Formato de resposta de laudo inválido.');return value as Record<string,unknown>}
@@ -10,6 +11,14 @@ export function normalizeReports(value:unknown):ReportsPage{
  return {reports:rows.map(normalizeReport),totalPages:Math.max(1,Number(meta.totalPages)||1),total:typeof meta.total==='number'?meta.total:undefined}
 }
 export const reportsService={
+ signerStatus(laboratoryId: string) {
+  const query = laboratoryId ? '?' + new URLSearchParams({laboratoryId}) : ''
+  return request<SignerStatus>('/reports/a1/status' + query, {}, {timeoutMs: 50_000})
+ },
+ configureSigner(laboratoryId: string, data: FormData) {
+  const query = laboratoryId ? '?' + new URLSearchParams({laboratoryId}) : ''
+  return request<SignerStatus>('/reports/a1/configuration' + query, {method:'POST',body:data}, {timeoutMs: 100_000})
+ },
  async list(filters:ReportsFilter,laboratoryId:string){const qs=new URLSearchParams({laboratoryId});for(const [k,v]of Object.entries(filters))if(v)qs.set(k,String(v));return normalizeReports(await request<unknown>(`/reports?${qs}`))},
  async byId(id:string,laboratoryId:string){const raw=await request<unknown>(`/reports/${encodeURIComponent(id)}?laboratoryId=${encodeURIComponent(laboratoryId)}`);const obj=record(raw);return normalizeReport(obj.report??obj.data??obj)},
  async saveDraft(draft: StructuredReportDraftDTO, laboratoryId: string, current?: {id:string;revision:number}) {
@@ -38,7 +47,7 @@ async function mutate(path:string, laboratoryId:string, method:string, body:Body
   const options = path.endsWith('/issue') ? {timeoutMs: 110000} : undefined
   return normalizeReport(await request<unknown>(path + (query.size ? '?' + query : ''), {method,body}, options))
  } catch (error) {
-  if (error instanceof ApiError && error.status === 409) {
+  if (error instanceof ApiError && error.status === 409 && path !== '/reports/drafts/import-pdf') {
    throw new ApiError('Conflito ao salvar. Confira a revisão e o estado atuais do laudo antes de tentar novamente.', 409)
   }
   throw error

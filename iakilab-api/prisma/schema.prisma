@@ -118,6 +118,7 @@ model Report {
   issuanceAttempt String? @db.Uuid
   issuanceStartedAt DateTime?
   issuanceFailedAt DateTime?
+  issuanceFailureCode String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)

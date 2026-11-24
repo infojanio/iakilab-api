@@ -1,6 +1,7 @@
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
 import { z } from 'zod'
+import { AppError } from '../src/domain.js'
 import { loadConfig } from '../src/config.js'
 import { token } from '../src/lib/crypto.js'
 import { PdfA1 } from '../src/lib/pdf-a1.js'
@@ -44,6 +45,7 @@ async function main() {
   if (!laboratory) throw new Error('Active laboratory not found')
   let rejected = 0
   for (const entry of manifest.reports) {
+    let rejection = 'INVALID_OR_UNREADABLE_PDF'
     try {
       const source = await realpath(resolve(root, entry.pdf))
       if (!source.startsWith(root + sep)) throw new Error('File outside manifest directory')
@@ -51,7 +53,9 @@ async function main() {
       if (!info.isFile() || info.size > 20 * 1024 * 1024) throw new Error('Invalid PDF file size')
       const bytes = await readFile(source)
       if (bytes.length > 20 * 1024 * 1024 || bytes.subarray(0, 5).toString() !== '%PDF-') throw new Error('Invalid PDF')
+      rejection = 'SIGNATURE_VERIFICATION_FAILED'
       await verifier.verify(bytes)
+      rejection = 'STORAGE_OR_MANIFEST_CONFLICT'
       if (mode === '--apply') {
         const existing = await prisma.report.findUnique({
           where: { legacyPublicId: entry.id },
@@ -89,9 +93,11 @@ async function main() {
         }
       }
       console.log(entry.id, mode === '--apply' ? 'IMPORTED_OR_ALREADY_PRESENT' : 'SIGNATURE_VERIFIED')
-    } catch {
+    } catch (error) {
       rejected++
-      console.error(entry.id, 'REJECTED_CHECK_SIGNATURE_STORAGE_OR_CONFLICT')
+      const reason = error instanceof AppError && ['PDF_HAS_NO_SIGNATURE', 'LABORATORY_SIGNER_INVALID_CONFIGURATION'].includes(error.code)
+        && rejection === 'SIGNATURE_VERIFICATION_FAILED' ? error.code : rejection
+      console.error(entry.id, reason)
     }
   }
   if (rejected) process.exitCode = 1

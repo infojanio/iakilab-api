@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_USER: iakilab
       POSTGRES_PASSWORD: ${IAKILAB_DATABASE_PASSWORD:?Set a unique local database password}
-      POSTGRES_DB: iakilab_homolog
+      POSTGRES_DB: iakilab
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
