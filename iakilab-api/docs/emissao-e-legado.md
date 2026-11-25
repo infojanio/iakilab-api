@@ -8,6 +8,8 @@ O QR contém o endereço do painel em `/consulta?code=…`. O servidor assina o 
 
 No painel, use **Importar PDF pronto** para laudos novos elaborados no Word ou no LibreOffice e exportados como PDF. A API confere o formato, recusa PDFs com assinatura incorporada e guarda o original como rascunho privado. Depois da validação, a emissão acrescenta o QR e aplica a assinatura A1 a uma cópia. Reserve esse fluxo para documentos ainda não publicados.
 
+Para água e solo, a prévia autenticada usa o mesmo PDF que serve de base para a emissão. `POST /reports/drafts/preview` gera uma prévia dos dados em edição sem gravar. `GET /reports/:id/preview` usa os dados da revisão salva. A prévia exibe um aviso de conferência em cada página. A emissão usa a revisão validada, inclui a página de verificação e só publica o arquivo após assinar e verificar.
+
 ## Configuração de homologação
 
 Execute os comandos no diretório `iakilab-api`:

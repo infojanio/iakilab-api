@@ -73,8 +73,12 @@ export const draft = z
   })
   .strict()
 export const revision = z.object({ revision: z.number().int().min(1) }).strict()
-export function draftData(body: unknown) {
-  const data = draft.parse(body)
+const previewDraft = draft.extend({
+  identification: z.string().trim().max(200),
+  customerName: z.string().trim().max(200),
+})
+export function draftData(body: unknown, mode: 'save' | 'preview' = 'save') {
+  const data = (mode === 'preview' ? previewDraft : draft).parse(body)
   return {
     identification: data.identification,
     customerName: data.customerName,

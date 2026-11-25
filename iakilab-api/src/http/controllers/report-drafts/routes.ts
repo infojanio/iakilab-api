@@ -7,6 +7,7 @@ import { createDraft } from './create-draft.js'
 import { updateDraft } from './update-draft.js'
 import { submitReport } from './submit-report.js'
 import { validateReport } from './validate-report.js'
+import { previewDraft, previewSavedReport } from './preview-report.js'
 import { returnReport } from './return-report.js'
 
 export async function reportDraftRoutes(
@@ -15,6 +16,9 @@ export async function reportDraftRoutes(
   service: ManageReportDrafts,
 ) {
   const secure = { preHandler: verifyJWT(auth) }
+  const preview = { ...secure, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }
+  app.post('/reports/drafts/preview', preview, previewDraft(service))
+  app.get('/reports/:id/preview', preview, previewSavedReport(service))
   app.post('/reports/drafts/import-pdf', secure, importReportPdf(service))
   app.post('/reports/drafts', secure, createDraft(service))
   app.patch('/reports/:id', secure, updateDraft(service))

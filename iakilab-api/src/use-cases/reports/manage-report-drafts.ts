@@ -1,3 +1,4 @@
+import { renderReportPreview } from '../../lib/render-report-pdf.js'
 import { PDFDocument } from 'pdf-lib'
 import { hasPdfSignature } from '../../lib/pdf-signature-fields.js'
 import type {AuthService} from '../auth/auth-service.js'
@@ -28,6 +29,14 @@ export class ManageReportDrafts {
   }
 
   async createDraft(scope: Scope, draft: DraftData) { return this.repository.createDraft(await this.tenant(scope), scope.actor.user.id, draft) }
+
+  async preview(scope: Scope, input: { draft: DraftData } | { id: string }) {
+    const laboratory = requireRecord(await this.auth.laboratoryProfile(scope.actor, scope.laboratoryId))
+    const report = 'draft' in input ? input.draft : requireRecord(await this.reports.find(laboratory.id, input.id))
+    if (report.kind === 'PDF_UPLOAD') throw new AppError(422, 'STRUCTURED_REPORT_REQUIRED')
+    if ('stage' in report && report.stage === 'ISSUED') throw new AppError(409, 'REPORT_ALREADY_ISSUED')
+    return renderReportPreview(report, laboratory.name)
+  }
 
   async importPdf(scope: Scope, data: Pick<DraftData, 'identification' | 'customerName'> & { notes: string }, bytes: Buffer) {
     const laboratoryId = await this.tenant(scope)

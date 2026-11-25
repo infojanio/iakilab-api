@@ -175,6 +175,12 @@ describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
         identification: 'L-01', customerName: 'Cliente A', reportKind: 'WATER', templateVersion: '1',
         waterResults: [{ id: 'ph', parameter: 'pH', unit: '', method: '', reference: '', group: 'PHYSICOCHEMICAL', result: '7,0', assayDate: '' }],
       }
+      const previewRequest = { method: 'POST' as const, url: '/reports/drafts/preview', payload: { ...draft, identification: '', customerName: '' } }
+      expect((await app.inject(previewRequest)).statusCode).toBe(401)
+      const unsavedPreview = await app.inject({ ...previewRequest, headers: analyst })
+      expect(unsavedPreview.statusCode).toBe(200)
+      expect(unsavedPreview.headers['content-type']).toContain('application/pdf')
+      expect(await db.report.count({ where: { laboratoryId: ids[0] } })).toBe(0)
       const report = await app.inject({ method: 'POST', url: '/reports/drafts', headers: analyst, payload: draft })
       expect(report.statusCode).toBe(201)
       const route = '/reports/' + report.json().id
@@ -195,6 +201,10 @@ describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
       expect(detail.json().validationHistory.map((event: { description: string }) => event.description))
         .toEqual(['Rascunho criado', 'Rascunho editado', 'Enviado para revisão', 'Devolvido para ajustes', 'Enviado para revisão', 'Laudo validado'])
       expect((await app.inject({ url: route, headers: other })).statusCode).toBe(404)
+      expect((await app.inject({ url: route + '/preview', headers: other })).statusCode).toBe(404)
+      const savedPreview = await app.inject({ url: route + '/preview', headers: admin })
+      expect(savedPreview.statusCode).toBe(200)
+      expect(savedPreview.headers['cache-control']).toBe('no-store')
 
       const boundary = 'iakilab-test-boundary'
       const sourcePdf = await PDFDocument.create()
@@ -274,7 +284,10 @@ describe.runIf(enabled)('fluxo de laboratório em PostgreSQL', () => {
         const structured = await app.inject({remoteAddress:'192.0.2.1', method:'POST', url:route+'/issue', headers:admin, payload:{revision:6}})
         expect(structured.statusCode, structured.body).toBe(200)
         expect(structured.json().signatureStatus).toBe('VERIFIED')
-        await realSigner.verify((await app.inject({url:'/public/reports/'+structured.json().publicCode+'/pdf'})).rawPayload)
+        const structuredPdf = (await app.inject({url:'/public/reports/'+structured.json().publicCode+'/pdf'})).rawPayload
+        await realSigner.verify(structuredPdf)
+        const previewPages = (await PDFDocument.load(savedPreview.rawPayload)).getPageCount()
+        expect((await PDFDocument.load(structuredPdf)).getPageCount()).toBe(previewPages + 1)
         const soil = await app.inject({method:'POST',url:'/reports/drafts',headers:analyst,payload:{
           identification:'SOIL-01',customerName:'Cliente teste',reportKind:'SOIL',templateVersion:'1',
           soilParameters:[{id:'soil-ph',parameter:'pH',unit:'',method:'',reference:'',group:'SOIL'}],
