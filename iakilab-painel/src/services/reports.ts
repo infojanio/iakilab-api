@@ -1,4 +1,4 @@
-import {ApiError,request,notAvailable} from './api'
+import {ApiError,request,requestReportPreview,notAvailable} from './api'
 import type {SignerStatus} from './report-signing'
 import type {Report,ReportsFilter,ReportsPage} from '../types/report'
 import type {StructuredReportDraftDTO,PdfImportDraftDTO} from '../types/report-draft'
@@ -18,6 +18,14 @@ export const reportsService={
  configureSigner(laboratoryId: string, data: FormData) {
   const query = laboratoryId ? '?' + new URLSearchParams({laboratoryId}) : ''
   return request<SignerStatus>('/reports/a1/configuration' + query, {method:'POST',body:data}, {timeoutMs: 100_000})
+ },
+ previewDraft(draft: StructuredReportDraftDTO, laboratoryId: string, signal?: AbortSignal) {
+  const query = laboratoryId ? '?' + new URLSearchParams({laboratoryId}) : ''
+  return requestReportPreview('/reports/drafts/preview' + query, {method:'POST',body:JSON.stringify(draft)}, signal)
+ },
+ previewSaved(id: string, laboratoryId: string, signal?: AbortSignal) {
+  const query = laboratoryId ? '?' + new URLSearchParams({laboratoryId}) : ''
+  return requestReportPreview('/reports/' + encodeURIComponent(id) + '/preview' + query, {}, signal)
  },
  async list(filters:ReportsFilter,laboratoryId:string){const qs=new URLSearchParams({laboratoryId});for(const [k,v]of Object.entries(filters))if(v)qs.set(k,String(v));return normalizeReports(await request<unknown>(`/reports?${qs}`))},
  async byId(id:string,laboratoryId:string){const raw=await request<unknown>(`/reports/${encodeURIComponent(id)}?laboratoryId=${encodeURIComponent(laboratoryId)}`);const obj=record(raw);return normalizeReport(obj.report??obj.data??obj)},

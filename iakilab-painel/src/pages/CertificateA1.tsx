@@ -62,7 +62,7 @@ export default function CertificateA1() {
     <fieldset disabled={pending} className="form-grid">
      <label className="field">Certificado A1 (.pfx ou .p12)<input name="certificate" type="file" accept=".pfx,.p12" required/></label>
      <label className="field">Senha do certificado<input name="password" type="password" autoComplete="off" maxLength={1024} required/></label>
-     <label className="field">Raiz de confiança (.pem ou .der)<input name="trustRoot" type="file" accept=".pem,.der,.cer,.crt" required/></label>
+     <label className="field">Raiz de confiança (.pem ou .der ou .crt)<input name="trustRoot" type="file" accept=".pem,.der,.cer,.crt" required/></label>
      <label className="field">Certificados intermediários (.pem), se necessário<input name="intermediateChain" type="file" accept=".pem"/></label>
      <button type="submit" className="button primary">{pending ? 'Conferindo o A1…' : 'Validar e ativar certificado'}</button>
     </fieldset>

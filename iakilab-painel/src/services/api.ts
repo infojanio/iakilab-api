@@ -19,7 +19,10 @@ async function readResponse<T>(
 ): Promise<T> {
   if (!SECURE_API_ENABLED) return notAvailable()
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const abort = () => controller.abort()
+  if (init.signal?.aborted) abort()
+  else init.signal?.addEventListener('abort', abort, { once: true })
+  const timeout = setTimeout(abort, timeoutMs)
   const headers = new Headers(init.headers)
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
@@ -57,6 +60,7 @@ async function readResponse<T>(
     throw new Error('Não foi possível conectar à API. Verifique a conexão e tente novamente.')
   } finally {
     clearTimeout(timeout)
+    init.signal?.removeEventListener('abort', abort)
   }
 }
 
@@ -86,10 +90,18 @@ export async function requestPdf(value: string): Promise<Blob> {
   const authorized = authorizedPdfUrl(value)
   if (!authorized || !accessToken) throw new ApiError('PDF indisponível nesta sessão.', 403)
   const path = authorized.slice(API_URL.length)
-  return readResponse(path, { headers: { Accept: 'application/pdf' } }, async response => {
-    if (response.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/pdf') {
-      throw new ApiError('A API não retornou um PDF válido.', 502)
-    }
-    return response.blob()
-  })
+  return readResponse(path, { headers: { Accept: 'application/pdf' } }, decodePdf)
+}
+
+export function requestReportPreview(path: string, init: RequestInit = {}, signal?: AbortSignal): Promise<Blob> {
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/pdf')
+  return readResponse(path, { ...init, headers, signal }, decodePdf, { timeoutMs: 30_000 })
+}
+
+async function decodePdf(response: Response) {
+  if (response.headers.get('Content-Type')?.split(';')[0].trim() !== 'application/pdf') {
+    throw new ApiError('A API não retornou um PDF válido.', 502)
+  }
+  return response.blob()
 }
