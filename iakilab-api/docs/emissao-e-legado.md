@@ -109,3 +109,13 @@ O administrador do laboratório pode abrir **Certificado A1** pelo menu ou pelo 
 Informe o PKCS#12, a senha, a raiz de confiança do laboratório e, conforme a cadeia, os intermediários. A API assina e verifica um PDF temporário antes de ativar o certificado. Se houver uma configuração por arquivo no ambiente, o A1 cadastrado pelo painel passa a ter precedência para aquele laboratório. Uma tentativa de cadastro rejeitada preserva o A1 ativo.
 
 O PKCS#12, a senha e a cadeia ficam criptografados com AES-256-GCM no subdiretório privado `.a1` de `STORAGE_ROOT`. Preserve esse diretório no backup do volume. Guarde a chave separadamente no cofre e recupere a mesma chave ao restaurar. A troca do certificado pelo painel não exige trocar a chave de armazenamento. As credenciais ficam legíveis para o assinador apenas em arquivos temporários privados durante o processamento.
+
+## Retificação de laudos emitidos
+
+Em homologação, aplique a migration `202611260002_report_rectification` e configure `ENABLE_REPORT_RECTIFICATION=true` na API. A opção vem desativada. Valide com o LabMoura a apresentação da versão vigente e os formatos dos QR históricos antes de habilitar a função em produção.
+
+No detalhe de um laudo vigente, o administrador do laboratório pode iniciar a retificação com motivo obrigatório. O analista pode editar o novo rascunho e enviá-lo à revisão. O administrador valida e emite pela assinatura A1 existente. Para laudos originados de PDF, anexe o PDF corrigido exportado sem assinatura. A linha do tempo autenticada registra o responsável, o motivo, as datas e a situação. Uma falha de assinatura conserva a versão anterior vigente e permite tentar a emissão novamente no mesmo rascunho.
+
+O código de cada versão continua entregando os bytes do documento correspondente. Depois de assinada, verificada e publicada, a nova versão recebe seu próprio código. A consulta anterior indica **Substituído** e apresenta um link para a versão vigente. Os endpoints legados preservam o UUID, o nome do arquivo e o download do original. Em `GET /legacy/reports/:id`, a apresentação pode usar `report.documentStatus` e `report.currentCode` para apontar a versão vigente em `/consulta?code=...` no painel. Motivos e responsáveis ficam na área autenticada.
+
+Na homologação, compare os bytes baixados antes e depois da retificação, confira a falha e a retomada com um A1 sintético e teste sem sessão os QR de ambas as versões. Use uma cópia autorizada do acervo para confirmar o encaminhamento do domínio legado antes da ativação em produção.

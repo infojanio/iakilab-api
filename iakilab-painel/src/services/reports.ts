@@ -2,6 +2,19 @@ import {ApiError,request,requestReportPreview,notAvailable} from './api'
 import type {SignerStatus} from './report-signing'
 import type {Report,ReportsFilter,ReportsPage} from '../types/report'
 import type {StructuredReportDraftDTO,PdfImportDraftDTO} from '../types/report-draft'
+
+export type ReportVersionEntry = {
+ id:string; identification:string; number:number; previousId:string|null; reason:string|null;
+ actorName:string|null; createdAt:string; issuedAt?:string; issuerName?:string;
+ status:'DRAFT'|'AWAITING_VALIDATION'|'VALIDATED'|'ISSUED'|'ISSUANCE_FAILED'|'SUPERSEDED';
+ current:boolean;
+}
+export type ReportVersions = {canStart:boolean; versions:ReportVersionEntry[]}
+
+function reportPath(id:string, action:string, laboratoryId:string) {
+ const query = laboratoryId ? '?' + new URLSearchParams({laboratoryId}) : ''
+ return '/reports/' + encodeURIComponent(id) + '/' + action + query
+}
 function record(value:unknown):Record<string,unknown>{if(!value || typeof value!=='object'||Array.isArray(value))throw new Error('Formato de resposta de laudo inválido.');return value as Record<string,unknown>}
 export function normalizeReport(value:unknown):Report{const r=record(value);if(typeof r.id!=='string')throw new Error('Laudo sem identificador válido.');return r as Report}
 export function normalizeReports(value:unknown):ReportsPage{
@@ -11,6 +24,22 @@ export function normalizeReports(value:unknown):ReportsPage{
  return {reports:rows.map(normalizeReport),totalPages:Math.max(1,Number(meta.totalPages)||1),total:typeof meta.total==='number'?meta.total:undefined}
 }
 export const reportsService={
+ versions(id:string, laboratoryId:string) {
+  return request<ReportVersions>(reportPath(id,'versions',laboratoryId))
+ },
+ async rectify(id:string, laboratoryId:string, reason:string) {
+  return normalizeReport(await request<unknown>(reportPath(id,'rectifications',laboratoryId), {
+   method:'POST', body:JSON.stringify({reason}),
+  }))
+ },
+ async replaceRectificationPdf(id:string, laboratoryId:string, revision:number, file:File) {
+  const form = new FormData()
+  form.set('revision',String(revision))
+  form.set('file',file)
+  return normalizeReport(await request<unknown>(reportPath(id,'rectification-pdf',laboratoryId), {
+   method:'POST', body:form,
+  }))
+ },
  signerStatus(laboratoryId: string) {
   const query = laboratoryId ? '?' + new URLSearchParams({laboratoryId}) : ''
   return request<SignerStatus>('/reports/a1/status' + query, {}, {timeoutMs: 50_000})

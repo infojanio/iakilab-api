@@ -40,10 +40,7 @@ export class ManageReportDrafts {
 
   async importPdf(scope: Scope, data: Pick<DraftData, 'identification' | 'customerName'> & { notes: string }, bytes: Buffer) {
     const laboratoryId = await this.tenant(scope)
-    const signed = await PDFDocument.load(bytes)
-      .then(hasPdfSignature)
-      .catch(() => { throw new AppError(422, 'INVALID_PDF') })
-    if (signed) throw new AppError(422, 'ALREADY_SIGNED_ORIGINAL')
+    await this.checkUnsignedPdf(bytes)
     const { discard, ...file } = await this.storage.saveOriginal(laboratoryId, bytes)
     try {
       return await this.repository.createDraft(laboratoryId, scope.actor.user.id, { identification: data.identification, customerName: data.customerName, kind: 'PDF_UPLOAD', draftData: data }, file)
@@ -51,6 +48,31 @@ export class ManageReportDrafts {
       await discard().catch(() => undefined)
       throw error
     }
+  }
+
+  async replaceRectificationPdf(scope: Scope, id: string, revision: number, bytes: Buffer) {
+    const laboratoryId = await this.tenant(scope)
+    const report = requireRecord(await this.reports.find(laboratoryId, id))
+    if (!report.rectifiesId || report.kind !== 'PDF_UPLOAD' || report.stage !== 'DRAFT' || report.revision !== revision)
+      throw new AppError(409, 'REPORT_REVISION_OR_STAGE_CONFLICT')
+    await this.checkUnsignedPdf(bytes)
+    const { discard, ...original } = await this.storage.saveOriginal(laboratoryId, bytes)
+    // Retain the file if a transport error leaves the transaction outcome unknown.
+    const changed = await this.repository.transition(laboratoryId, id, {
+      from: 'DRAFT', to: 'DRAFT', action: 'RECTIFICATION_PDF_REPLACED', revision, actorId: scope.actor.user.id, original,
+    })
+    if (!changed) {
+      await discard().catch(() => undefined)
+      throw new AppError(409, 'REPORT_REVISION_OR_STAGE_CONFLICT')
+    }
+    return requireRecord(await this.reports.find(laboratoryId, id))
+  }
+
+  private async checkUnsignedPdf(bytes: Buffer) {
+    const signed = await PDFDocument.load(bytes)
+      .then(hasPdfSignature)
+      .catch(() => { throw new AppError(422, 'INVALID_PDF') })
+    if (signed) throw new AppError(422, 'ALREADY_SIGNED_ORIGINAL')
   }
 
   async transition(scope: Scope, id: string, revision: number, action: Transition, draft?: DraftData) {

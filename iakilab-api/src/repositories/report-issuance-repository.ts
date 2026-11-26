@@ -1,3 +1,4 @@
+import type { Report } from '@prisma/client'
 import type { ReportRecord } from './reports-repository.js'
 
 export type StoredPdf = { storageKey: string; sha256: string; byteLength: number }
@@ -14,5 +15,8 @@ export interface ReportIssuanceRepository {
   complete(claim: IssuanceClaim, code: string, file: StoredPdf): Promise<boolean>
   fail(claim: IssuanceClaim, code: string): Promise<void>
   findPublishedByFilename(filename: string): Promise<ReportRecord | null>
+  issuerNames(ids: string[]): Promise<{ id: string; name: string }[]>
+  series(laboratoryId: string, rootId: string, publishedOnly?: boolean): Promise<ReportRecord[]>
+  createRectification(report: ReportRecord, rootIdentification: string, reason: string, actor: { id: string; name: string }): Promise<Report>
   findPublished(code: string): Promise<ReportRecord | null>
 }

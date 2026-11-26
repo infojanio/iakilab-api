@@ -9,6 +9,7 @@ export type Config = {
   a1ByLaboratory?: ReadonlyMap<string, A1Config>
   a1?: A1Config
   a1ConfigurationInvalid?: boolean
+  reportRectificationEnabled?: boolean
   a1Management?: { key: Buffer; python: string; publicOrigin: string }
 }
 export function loadConfig({ tolerateInvalidA1 = false } = {}): Config {
@@ -39,6 +40,7 @@ export function loadConfig({ tolerateInvalidA1 = false } = {}): Config {
     origins,
     cookieSecure: e.COOKIE_SECURE === 'true',
     storageRoot: e.STORAGE_ROOT,
+    reportRectificationEnabled: process.env.ENABLE_REPORT_RECTIFICATION === 'true',
     a1Management: managementKey.success && origin.success ? {
       key: Buffer.from(managementKey.data, 'hex'),
       python: process.env.A1_PYTHON ?? 'python3',

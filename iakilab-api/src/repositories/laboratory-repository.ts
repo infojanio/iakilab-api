@@ -1,7 +1,17 @@
-import type { Client, Sample, Report, ReportStage, ReportKind, Prisma } from '@prisma/client'
+import type { Client, InspectionDecision, Sample, Report, ReportStage, ReportKind, Prisma } from '@prisma/client'
 
 export type ClientData = Pick<Client, 'name' | 'document' | 'email' | 'phone' | 'address'>
 export type SampleData = Pick<Sample, 'identification' | 'type' | 'origin' | 'collectedAt' | 'status' | 'analyses'>
+export type SampleLabel = Pick<Sample, 'id' | 'identification' | 'origin'> & { serviceOrderNumber?: string }
+export type InspectionData = {
+  decision: InspectionDecision
+  condition: string
+  reason?: string
+}
+export type SampleWorkflow =
+  | { action: 'receive'; inspection: InspectionData; userId: string; userName: string }
+  | { action: 'start' }
+  | { action: 'result'; result: string }
 export type DraftData = Pick<Report, 'identification' | 'customerName'> & {
   kind: ReportKind
   draftData: Prisma.InputJsonObject
@@ -12,8 +22,9 @@ export type DraftTransition = {
   to: ReportStage
   revision: number
   actorId: string
-  action: 'EDITED' | 'SUBMITTED' | 'VALIDATED' | 'RETURNED'
+  action: 'EDITED' | 'SUBMITTED' | 'VALIDATED' | 'RETURNED' | 'RECTIFICATION_PDF_REPLACED'
   draft?: DraftData
+  original?: OriginalPdf
 }
 export interface LaboratoryRepository {
   listClients(lab: string): Promise<Client[]>
@@ -22,8 +33,10 @@ export interface LaboratoryRepository {
   updateClient(lab: string, id: string, data: Partial<ClientData> & { active?: boolean }): Promise<Client | null>
   listSamples(lab: string): Promise<Sample[]>
   sample(lab: string, id: string): Promise<Sample | null>
+  sampleLabels(lab: string, ids: string[]): Promise<SampleLabel[]>
   createSample(lab: string, data: SampleData): Promise<Sample>
   updateSample(lab: string, id: string, data: Partial<SampleData> & { active?: boolean }): Promise<Sample | null>
+  advanceSample(lab: string, id: string, change: SampleWorkflow): Promise<boolean>
   createDraft(lab: string, actorId: string, data: DraftData, original?: OriginalPdf): Promise<Report>
   transition(lab: string, id: string, change: DraftTransition): Promise<Report | null>
   metrics(lab: string): Promise<{ total: number; clients: number; samples: number; byStage: { stage: ReportStage; count: number }[] }>

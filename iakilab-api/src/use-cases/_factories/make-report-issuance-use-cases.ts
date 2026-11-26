@@ -1,3 +1,4 @@
+import { RectifyReport } from '../reports/rectify-report.js'
 import { PDFDocument } from 'pdf-lib'
 import type { A1CredentialStore, A1Material } from '../../lib/a1-credential-store.js'
 import { AppError } from '../../domain.js'
@@ -12,7 +13,7 @@ import { ReadPublicReport } from '../reports/read-public-report.js'
 
 export function makeReportIssuanceUseCases(
   auth: AuthService, reports: ReportsRepository, repository: ReportIssuanceRepository,
-  storage: LocalPdfStorage, config?: ReadonlyMap<string, A1Config>, configurationInvalid = false, credentials?: A1CredentialStore,
+  storage: LocalPdfStorage, config?: ReadonlyMap<string, A1Config>, configurationInvalid = false, credentials?: A1CredentialStore, rectificationEnabled = false,
 ) {
   const setups = new Map(Array.from(config ?? [], ([id, entry]) => [
     id, { publicOrigin: entry.publicOrigin, signer: new PdfA1(entry) },
@@ -30,7 +31,7 @@ export function makeReportIssuanceUseCases(
     return setups.get(id.toLowerCase())
   }
   return {
-    issue: new IssueReport(auth, reports, repository, storage, resolveSigner),
+    issue: new IssueReport(auth, reports, repository, storage, resolveSigner, rectificationEnabled),
     async signerStatus(scope: Scope) {
       requireLaboratoryAdmin(scope)
       const laboratoryId = await auth.tenant(scope.actor, scope.laboratoryId)
@@ -57,6 +58,7 @@ export function makeReportIssuanceUseCases(
       await credentials.save(laboratoryId, material)
       return { ...status, manageable: true }
     },
+    rectification: new RectifyReport(auth, reports, repository, rectificationEnabled),
     publicReport: new ReadPublicReport(repository, storage),
   }
 }

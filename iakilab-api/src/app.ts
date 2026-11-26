@@ -21,6 +21,7 @@ import { plansRoutes } from './http/controllers/plans/routes.js'
 import { subscriptionsRoutes } from './http/controllers/subscriptions/routes.js'
 import type { makePlatformUseCases } from './use-cases/_factories/make-platform-use-cases.js'
 import { clientsRoutes } from './http/controllers/clients/routes.js'
+import { serviceOrderRoutes } from './http/controllers/service-orders/routes.js'
 import { samplesRoutes } from './http/controllers/samples/routes.js'
 import { dashboardRoutes } from './http/controllers/dashboard/routes.js'
 import { reportDraftRoutes } from './http/controllers/report-drafts/routes.js'
@@ -109,6 +110,7 @@ export async function buildApp(
   if (services.laboratory) {
     await clientsRoutes(app, services.auth, services.laboratory.clients)
     await samplesRoutes(app, services.auth, services.laboratory.samples)
+    if (services.laboratory.orders) await serviceOrderRoutes(app, services.auth, services.laboratory.orders)
     await dashboardRoutes(app, services.auth, services.laboratory.dashboard)
     await reportDraftRoutes(app, services.auth, services.laboratory.drafts)
   }

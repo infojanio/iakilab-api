@@ -1,3 +1,4 @@
+import { rectificationHistory, startRectification } from './rectification.js'
 import type { FastifyInstance } from 'fastify'
 import type { AuthService } from '../../../use-cases/auth/auth-service.js'
 import type { IssueReport } from '../../../use-cases/reports/issue-report.js'
@@ -13,9 +14,14 @@ import { legacyReport } from './get-legacy-report.js'
 import { legacyReportPdf } from './download-legacy-report.js'
 
 export async function reportIssuanceRoutes(
-  app: FastifyInstance, auth: AuthService, useCases: { issue: IssueReport; publicReport: ReadPublicReport; signerStatus?: ReturnType<typeof makeReportIssuanceUseCases>['signerStatus']; configureSigner?: ReturnType<typeof makeReportIssuanceUseCases>['configureSigner'] },
+  app: FastifyInstance, auth: AuthService, useCases: { issue: IssueReport; publicReport: ReadPublicReport; signerStatus?: ReturnType<typeof makeReportIssuanceUseCases>['signerStatus']; configureSigner?: ReturnType<typeof makeReportIssuanceUseCases>['configureSigner']; rectification?: ReturnType<typeof makeReportIssuanceUseCases>['rectification'] },
 ) {
   app.post('/reports/:id/issue', { preHandler: verifyJWT(auth), config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, issueReport(useCases.issue))
+  if (useCases.rectification) {
+    const secure = { preHandler: verifyJWT(auth) }
+    app.get('/reports/:id/versions', secure, rectificationHistory(useCases.rectification))
+    app.post('/reports/:id/rectifications', secure, startRectification(useCases.rectification))
+  }
   const { signerStatus } = useCases
   if (signerStatus) {
     app.get('/reports/a1/status', {

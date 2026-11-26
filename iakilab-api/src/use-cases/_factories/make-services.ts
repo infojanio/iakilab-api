@@ -1,3 +1,4 @@
+import { PrismaServiceOrderRepository } from '../../repositories/prisma/prisma-service-order-repository.js'
 import { join } from 'node:path'
 import { A1CredentialStore } from '../../lib/a1-credential-store.js'
 import type { Config } from '../../config.js'
@@ -30,13 +31,14 @@ export async function makeServices(config: Config) {
     auth,
     reports: new ReadReports(reports),
     storage,
-    issuance: makeReportIssuanceUseCases(auth, reports, new PrismaReportIssuanceRepository(prisma), storage, config.a1ByLaboratory, config.a1ConfigurationInvalid, credentials),
+    issuance: makeReportIssuanceUseCases(auth, reports, new PrismaReportIssuanceRepository(prisma), storage, config.a1ByLaboratory, config.a1ConfigurationInvalid, credentials, config.reportRectificationEnabled),
     platform: makePlatformUseCases(new PrismaPlatformRepository(prisma)),
     laboratory: makeLaboratoryUseCases(
       auth,
       new PrismaLaboratoryRepository(prisma),
       reports,
       storage,
+      new PrismaServiceOrderRepository(prisma),
     ),
   }
 }

@@ -93,11 +93,44 @@ test('Public verification omits session credentials and builds a download URL on
       assert.equal(options.headers.has('Authorization'), false)
       return new Response(JSON.stringify({
         identification:'I-01',signatureStatus:'VERIFIED',issuedAt:'2026-11-19T00:00:00.000Z',
+        documentStatus:'SUPERSEDED',currentCode:'v'.repeat(64),
         downloadPath:'https://untrusted.example.test/file',
       }))
     }
     const report = await publicReportsService.verify(code)
     assert.equal(report.downloadUrl, 'https://api.example.test/public/reports/' + code + '/pdf')
+    assert.equal(report.documentStatus, 'SUPERSEDED')
+    assert.equal(report.currentCode, 'v'.repeat(64))
+  } finally {
+    globalThis.fetch = previous
+  }
+})
+
+test('Rectification uses private report routes and sends the PDF with its draft revision', async () => {
+  const { reportsService } = await moduleOf('src/services/reports.ts', {
+    VITE_API_URL: 'https://api.example.test', VITE_SECURE_API_ENABLED: 'true',
+  })
+  const previous = globalThis.fetch
+  const calls = []
+  try {
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url: new URL(url), ...options })
+      return Response.json({ id:'child', canStart:false, versions:[] })
+    }
+    await reportsService.versions('original', 'lab')
+    await reportsService.rectify('original', 'lab', 'Motivo interno')
+    await reportsService.replaceRectificationPdf('child', 'lab', 2, new File(['%PDF-1.7'], 'correcao.pdf'))
+    assert.deepEqual(calls.map(({url,method}) => [url.pathname, method]), [
+      ['/reports/original/versions', undefined],
+      ['/reports/original/rectifications', 'POST'],
+      ['/reports/child/rectification-pdf', 'POST'],
+    ])
+    assert.ok(calls.every(({url,credentials}) => url.searchParams.get('laboratoryId') === 'lab' && credentials === 'include'))
+    assert.deepEqual(JSON.parse(calls[1].body), {reason:'Motivo interno'})
+    assert.equal(calls[2].body.get('revision'), '2')
+    assert.equal(calls[2].body.get('file').name, 'correcao.pdf')
+    globalThis.fetch = async () => Response.json({code:'RECTIFICATION_ALREADY_EXISTS'}, {status:409})
+    await assert.rejects(reportsService.rectify('original', 'lab', 'Outra tentativa'), {status:409,message:/Já existe uma versão posterior/})
   } finally {
     globalThis.fetch = previous
   }

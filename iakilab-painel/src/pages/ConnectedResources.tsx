@@ -1,5 +1,8 @@
 import {useEffect,useState,type FormEvent} from 'react'
-import {Heading,Panel,Modal,Empty} from '../components/common'
+import {Link} from 'react-router-dom'
+import {Printer} from 'lucide-react'
+import {Heading,Panel,Modal,Empty,SearchBox,usePaths} from '../components/common'
+import {SampleLabels} from '../components/SampleLabels'
 import {useAuth} from '../context/AuthContext'
 import {ApiError,request} from '../services/api'
 import {date} from '../data/demo'
@@ -13,7 +16,7 @@ const configs:Record<Resource,{title:string;columns:string[];fields:Field[]}>={
   {key:'email',label:'E-mail',type:'email',optional:true},{key:'address',label:'Endereço',optional:true}]},
  samples:{title:'Amostras',columns:['Identificação','Tipo','Origem','Coleta','Situação'],fields:[
   {key:'identification',label:'Identificação'},{key:'type',label:'Tipo'},{key:'origin',label:'Origem'},
-  {key:'collectedAt',label:'Data da coleta',type:'date'},{key:'status',label:'Situação'},{key:'analyses',label:'Análises (uma por linha)',optional:true}]},
+  {key:'collectedAt',label:'Data da coleta',type:'date'},{key:'analyses',label:'Análises (uma por linha)',optional:true}]},
  laboratories:{title:'Laboratórios',columns:['Laboratório','Documento','Plano','Assinatura'],fields:[
   {key:'name',label:'Nome do laboratório'},{key:'slug',label:'Identificador (ex. labmoura)'},{key:'document',label:'Documento',optional:true}]},
  plans:{title:'Planos',columns:['Plano','Preço (R$)','Usuários','Laudos','Armazenamento (GB)','Situação'],fields:[
@@ -30,6 +33,8 @@ export function ConnectedResources({resource}:{resource:Resource}){
 }
 function ResourceTable({resource}:{resource:Resource}){
  const {user}=useAuth()
+ const {base}=usePaths()
+ const isSamples=resource==='samples'
  const scoped=resource==='clients'||resource==='samples'
  const scope=scoped&&user?.laboratoryId?'?laboratoryId='+encodeURIComponent(user.laboratoryId):''
  const canCreate=user?.role==='SUPER_ADMIN'||resource==='samples'||(resource==='clients'&&user?.role==='ADMIN')
@@ -45,6 +50,9 @@ function ResourceTable({resource}:{resource:Resource}){
  const [success,setSuccess]=useState('')
  const [loading,setLoading]=useState(true)
  const [saving,setSaving]=useState(false)
+ const [sampleCode,setSampleCode]=useState('')
+ const [selectedSamples,setSelectedSamples]=useState<string[]>([])
+ const [printIds,setPrintIds]=useState<string[]>()
  useEffect(()=>{
   let active=true
   setLoading(true)
@@ -54,11 +62,17 @@ function ResourceTable({resource}:{resource:Resource}){
    resource==='subscriptions'?request<LaboratoryDTO[]>('/laboratories'):Promise.resolve([]),
    resource==='subscriptions'||resource==='laboratories'?request<PlanDTO[]>('/plans'):Promise.resolve([]),
   ]).then(([data,laboratories,catalog])=>{
-   if(active){setRows(data);setLabs(laboratories);setPlans(catalog)}
+   if(active){
+    setRows(data);setLabs(laboratories);setPlans(catalog)
+    if(isSamples){
+     const available=new Set(data.map(row=>row.id))
+     setSelectedSamples(previous=>previous.filter(id=>available.has(id)))
+    }
+   }
   }).catch(error=>{if(active)setLoadError(error.message)})
    .finally(()=>{if(active)setLoading(false)})
   return()=>{active=false}
- },[path,scope,resource,refresh])
+ },[path,scope,resource,refresh,isSamples])
  function cells(row:Row):string[]{
   if('subscriptionStatus' in row)
    return [row.name,row.document||'—',plans.find(p=>p.id===row.planId)?.name||'—',row.subscriptionStatus]
@@ -70,7 +84,7 @@ function ResourceTable({resource}:{resource:Resource}){
    return [labs.find(l=>l.id===row.laboratoryId)?.name||row.laboratoryId,plans.find(p=>p.id===row.planId)?.name||row.planId,date(row.startsAt),date(row.expiresAt),status]
   }
   if('price' in row)return [row.name,row.price.toFixed(2),String(row.users),String(row.reports),String(row.storageGB),row.active?'Ativo':'Inativo']
-  if('collectedAt' in row)return [row.identification,row.type,row.origin,date(row.collectedAt),row.status]
+  if('collectedAt' in row)return [row.identification,row.type,row.origin,date(row.collectedAt),row.inspectionDecision ? row.status : 'Sem inspeção registrada']
   return [row.name,row.document||'—',row.email||row.phone||'—']
  }
  function open(row:Row|'new'){setFormError('');setSuccess('');setEditor(row)}
@@ -80,7 +94,10 @@ function ResourceTable({resource}:{resource:Resource}){
   const form=new FormData(event.currentTarget)
   const payload:Record<string,unknown>=Object.fromEntries(fields.map(field=>[field.key,String(form.get(field.key)??'').trim()]))
   if(resource==='laboratories'&&!payload.document)delete payload.document
-  if(resource==='samples')payload.analyses=String(payload.analyses).split('\n').map(value=>value.trim()).filter(Boolean)
+  if(resource==='samples'){
+   payload.analyses=String(payload.analyses).split('\n').map(value=>value.trim()).filter(Boolean)
+   if(editor==='new')payload.status='Aguardando recebimento'
+  }
   if(resource==='plans'){
    for(const key of ['users','reports','storageGB'])payload[key]=Number(payload[key])
    payload.active=form.has('active')
@@ -101,16 +118,39 @@ function ResourceTable({resource}:{resource:Resource}){
   }finally{setSaving(false)}
  }
  const editable=(resource==='plans'||resource==='clients'||resource==='samples')&&canCreate
+ const search=sampleCode.trim().toLowerCase()
+ const visibleRows=isSamples&&search
+  ? rows.filter(row=>'collectedAt' in row&&row.identification.toLowerCase().includes(search))
+  : rows
  return <>
   <Heading title={title} description="Consulte e gerencie os registros disponíveis para o seu perfil."
    action={canCreate&&<button className="button primary" onClick={()=>open('new')}>Novo cadastro</button>}/>
   {success&&<p role="status">{success}</p>}
   <Panel>
-   {loading?<p role="status">Carregando…</p>:loadError?<p role="alert">{loadError} <button onClick={()=>setRefresh(value=>value+1)}>Tentar novamente</button></p>:rows.length===0?<Empty/>:
-    <div className="table-wrap"><table><thead><tr>{columns.map(column=><th key={column}>{column}</th>)}{editable&&<th>Ações</th>}</tr></thead>
-     <tbody>{rows.map(row=><tr key={row.id}>{cells(row).map((cell,i)=><td key={columns[i]}>{cell}</td>)}
+   {isSamples&&<div className="filters">
+    <SearchBox value={sampleCode} onChange={setSampleCode} placeholder="Pesquisar pelo código da amostra"/>
+    <button className="button" disabled={loading||Boolean(loadError)||!selectedSamples.length} onClick={()=>setPrintIds(selectedSamples)}>
+     <Printer size={16}/>Imprimir etiquetas{selectedSamples.length ? ` (${selectedSamples.length})` : ''}
+    </button>
+    {selectedSamples.length>0&&<button className="text-button" onClick={()=>setSelectedSamples([])}>Limpar seleção</button>}
+   </div>}
+   {loading?<p role="status">Carregando…</p>:loadError?<p role="alert">{loadError} <button onClick={()=>setRefresh(value=>value+1)}>Tentar novamente</button></p>:visibleRows.length===0?<Empty description={isSamples&&search?'Nenhuma amostra corresponde ao código informado.':undefined}/>:
+    <div className="table-wrap"><table><thead><tr>{isSamples&&<th>Selecionar</th>}{columns.map(column=><th key={column}>{column}</th>)}{editable&&<th>Ações</th>}</tr></thead>
+     <tbody>{visibleRows.map(row=><tr key={row.id}>
+      {isSamples&&'collectedAt' in row&&<td>
+       <input type="checkbox" aria-label={'Selecionar amostra '+row.identification}
+        checked={selectedSamples.includes(row.id)}
+        onChange={event=>{
+         const checked=event.target.checked
+         setSelectedSamples(previous=>checked?[...previous,row.id]:previous.filter(id=>id!==row.id))
+        }}/>
+      </td>}
+      {cells(row).map((cell,i)=><td key={columns[i]}>{isSamples&&i===0
+       ? <Link className="report-id" to={base+'/samples/'+encodeURIComponent(row.id)}>{cell}</Link>
+       : cell}</td>)}
       {editable&&<td><button className="button small" onClick={()=>open(row)}>Editar</button></td>}</tr>)}</tbody></table></div>}
   </Panel>
+  {isSamples&&printIds&&<SampleLabels ids={printIds} laboratoryId={user?.laboratoryId} onClose={()=>setPrintIds(undefined)}/>}
   {editor&&<Modal title={editor==='new'?'Novo cadastro':'Editar cadastro'} onClose={()=>{if(!saving)setEditor(null)}}>
    <form onSubmit={submit}><fieldset disabled={saving}><div className="form-grid">
     {fields.map(field=>{

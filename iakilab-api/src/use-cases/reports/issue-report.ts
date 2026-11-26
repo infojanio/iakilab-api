@@ -20,6 +20,7 @@ export class IssueReport {
     private issuance: ReportIssuanceRepository,
     private storage: Pick<LocalPdfStorage, 'read' | 'savePdf'>,
     private resolveSigner: (laboratoryId: string) => { signer: Signer; publicOrigin: string } | undefined | Promise<{ signer: Signer; publicOrigin: string } | undefined>,
+    private rectificationEnabled = false,
   ) {}
 
   async execute(scope: Scope, reportId: string, revision: number) {
@@ -29,6 +30,7 @@ export class IssueReport {
     const report = await this.reports.find(laboratory.id, reportId)
     if (!report) throw new AppError(404, 'REPORT_NOT_FOUND')
     if (report.publicCode && verifiedFile(report)) return reportDTO(report)
+    if (report.rectifiesId && !this.rectificationEnabled) throw new AppError(403, 'RECTIFICATION_DISABLED')
     if (report.stage !== 'VALIDATED' || report.revision !== revision) {
       throw new AppError(409, 'REPORT_REVISION_OR_STAGE_CONFLICT')
     }

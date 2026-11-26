@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto'
+import { AppError } from '../../domain.js'
+import type { ReportRecord } from '../reports-repository.js'
 import { Prisma } from '@prisma/client'
 import type { PrismaClient } from '@prisma/client'
 import type { IssuanceClaim, ReportIssuanceRepository, StoredPdf } from '../report-issuance-repository.js'
@@ -66,6 +69,56 @@ export class PrismaReportIssuanceRepository implements ReportIssuanceRepository 
         } })
       }
     })
+  }
+
+  issuerNames(ids: string[]) {
+    return this.db.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+  }
+
+  series(laboratoryId: string, rootId: string, publishedOnly = false) {
+    return this.db.report.findMany({
+      where: {
+        laboratoryId, OR: [{ id: rootId }, { rectificationRootId: rootId }],
+        ...(publishedOnly && { stage: 'ISSUED', publicCode: { not: null }, laboratory: { active: true } }),
+      },
+      orderBy: { rectificationNumber: 'asc' },
+      include: { versions: { orderBy: { number: 'desc' }, take: 1, include: { files: true } } },
+    })
+  }
+
+  async createRectification(report: ReportRecord, rootIdentification: string, reason: string, actor: { id: string; name: string }) {
+    const number = report.rectificationNumber + 1
+    const snapshot = report.versions[0].snapshot
+    const suffix = ' - R' + number
+    const create = (suffix: string) => {
+      const identification = rootIdentification.slice(0, 200 - suffix.length) + suffix
+      return this.db.report.create({ data: {
+        laboratoryId: report.laboratoryId, identification, kind: report.kind, customerName: report.customerName,
+        serviceOrderId: report.serviceOrderId, rectifiesId: report.id,
+        draftData: {
+          ...(snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) ? snapshot : {}),
+          identification, customerName: report.customerName,
+        },
+        rectificationRootId: report.rectificationRootId ?? report.id, rectificationNumber: number,
+        rectificationReason: reason, rectificationActorId: actor.id, rectificationActorName: actor.name,
+        events: { create: { actorId: actor.id, revision: 1, action: 'RECTIFICATION_STARTED' } },
+      } })
+    }
+    const existingChild = () => this.db.report.findFirst({
+      where: { laboratoryId: report.laboratoryId, rectifiesId: report.id }, select: { id: true },
+    })
+    const uniqueConflict = (error: unknown) =>
+      error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
+    try {
+      return await create(suffix)
+    } catch (error) {
+      if (!uniqueConflict(error)) throw error
+      if (await existingChild()) throw new AppError(409, 'RECTIFICATION_ALREADY_EXISTS')
+      return create(suffix + ' (' + randomUUID() + ')').catch(async retryError => {
+        if (uniqueConflict(retryError) && await existingChild()) throw new AppError(409, 'RECTIFICATION_ALREADY_EXISTS')
+        throw retryError
+      })
+    }
   }
 
   findPublished(code: string) {

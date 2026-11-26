@@ -41,10 +41,26 @@ async function readResponse<T>(
       const issuance = path.endsWith('/issue') || path.includes('/issue?')
       const draftImport = path.startsWith('/reports/drafts/import-pdf')
       const a1Configuration = path.startsWith('/reports/a1/configuration')
-      const detail = issuance || draftImport || a1Configuration ? await response.json().catch(() => null) : null
+      const sampleWorkflow = /^\/samples\/[^/]+\/(inspection|analysis\/(start|result))(?:\?|$)/.test(path)
+      const rectification = /^\/reports\/[^/]+\/(rectifications|rectification-pdf)(?:\?|$)/.test(path)
+      const detail = issuance || draftImport || a1Configuration || sampleWorkflow || rectification ? await response.json().catch(() => null) : null
       const known = typeof detail?.code === 'string' && Object.hasOwn(signingErrors, detail.code)
       const duplicateImport = draftImport && response.status === 409 && detail?.code === 'DUPLICATE_RECORD'
-      const message = (duplicateImport
+      const workflowMessage = sampleWorkflow ? ({
+        SAMPLE_ALREADY_INSPECTED: 'A inspeção já foi registrada. Confira o histórico da amostra.',
+        SAMPLE_REJECTED: 'A amostra foi rejeitada e está disponível para avaliação de recoleta.',
+        SAMPLE_INSPECTION_REQUIRED: 'Registre a inspeção antes de iniciar a análise.',
+        SAMPLE_ANALYSIS_STATE_CONFLICT: 'A etapa de análise mudou. Confira a situação da amostra.',
+      } as Record<string,string>)[detail?.code] : undefined
+      const rectificationMessage = rectification || issuance ? ({
+        RECTIFICATION_DISABLED: 'A retificação está desativada neste ambiente.',
+        RECTIFICATION_ALREADY_EXISTS: 'Já existe uma versão posterior. Abra o histórico do laudo para continuar.',
+        RECTIFICATION_REQUIRES_ISSUED_REPORT: 'A retificação só pode partir de um laudo emitido.',
+        ALREADY_SIGNED_ORIGINAL: 'Envie o PDF corrigido exportado sem assinatura digital.',
+        INVALID_PDF: 'Não foi possível ler o PDF corrigido.',
+      } as Record<string,string>)[detail?.code] : undefined
+      const stalePdfUpload = rectification && detail?.code === 'REPORT_REVISION_OR_STAGE_CONFLICT'
+      const message = (stalePdfUpload ? 'A versão do rascunho mudou. Recarregue o laudo antes de anexar o PDF.' : rectificationMessage) ?? workflowMessage ?? (duplicateImport
         ? 'Já existe um laudo com esse número neste laboratório. Abra o laudo existente na lista ou informe outro número se este for um novo laudo.'
         : known ? issuance ? issuanceFailureMessage(detail.code) : signingErrors[detail.code] : undefined) ?? {
         401: path === '/sessions' ? 'E-mail ou senha inválidos.' : 'Sessão expirada. Entre novamente.',

@@ -4,7 +4,7 @@ export type AnalysisResult = { parameter: string; result: string; unit: string; 
 // Campos preservados do contrato Report LabMoura. Confirmar schema no backend antes de habilitar gravação.
 export type Report = {
  revision?:number; issuanceFailureCode?:string; publicCode?:string; signatureStatus?:'NOT_REQUESTED'|'PENDING'|'FAILED'|'VERIFIED'; reportKind?:ReportKind; draftData?:Partial<StructuredReportDraftDTO>;
- id: string; identification?: string; laboratoryId?: string; status?: ReportStatus;
+ id: string; identification?: string; laboratoryId?: string; serviceOrderId?: string; rectifiesId?: string; status?: ReportStatus;
  createdAt?: string; customerName?: string; document?: string; address?: string;
  phone?: string; email?: string; technicianName?: string; sampleOrigin?: string;
  sampleType?: string; entryDate?: string; collectionDate?: string; collectionTime?: string;
@@ -18,7 +18,13 @@ export type CreateReportDTO = Omit<Report, 'id' | 'createdAt' | 'signedPdfUrl'>
 export type Role = 'SUPER_ADMIN' | 'ADMIN' | 'ANALISTA'
 export type User = {id:string; name:string; email:string; role:Role; laboratoryId?:string; laboratoryName?:string}
 export type ClientDTO = {id:string; laboratoryId:string; name:string; document:string; email:string; phone:string; address:string}
-export type SampleDTO = {id:string; laboratoryId:string; identification:string; type:string; origin:string; collectedAt:string; status:string; analyses:string[]}
+export type InspectionDecision = 'ACCEPTED' | 'ACCEPTED_WITH_RESERVATION' | 'REJECTED'
+export type SampleDTO = {
+ id:string; laboratoryId:string; identification:string; type:string; origin:string; collectedAt:string; status:string; analyses:string[]
+ active?:boolean; serviceOrderId?:string|null; inspectionDecision?:InspectionDecision|null; receivedAt?:string|null
+ receivedByName?:string|null; arrivalCondition?:string|null; inspectionReason?:string|null
+ analysisStartedAt?:string|null; analysisResult?:string|null
+}
 export type LaboratoryDTO = {id:string; name:string; document:string; responsible:string; planId:string; subscriptionStatus:string;active?:boolean}
 export type PlanDTO = {id:string; name:string; price:number; users:number; reports:number; storageGB:number; features:string[];active?:boolean}
 export type SubscriptionDTO = {id:string; laboratoryId:string; planId:string; startsAt:string; expiresAt:string; status:string; autoRenew:boolean}

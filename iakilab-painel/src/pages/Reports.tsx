@@ -7,6 +7,8 @@ import {reportsService} from '../services/reports'
 import {describeSigner, issuanceFailureMessage, type SignerStatus} from '../services/report-signing'
 import {ApiError,authorizedPdfUrl} from '../services/api'
 import {AuthorizedReportPdf} from '../components/AuthorizedReportPdf'
+import { RectificationPdf, ReportVersions } from '../components/ReportVersions'
+import { OrderInspectionNotes } from '../components/OrderInspectionNotes'
 import { StructuredPdfPreview } from '../components/StructuredPdfPreview'
 import {useAuth} from '../context/AuthContext'
 import type {Report,ReportStatus} from '../types/report'
@@ -62,9 +64,15 @@ function ReportDetailContent({id}:{id?:string}){
   }finally{saving.current=false;setPending(false)}
  }
 const [report,setReport]=useState<Report|null>(null);const [loading,setLoading]=useState(true);const [error,setError]=useState('');useEffect(()=>{let active=true;setError('');setLoading(true);setReport(null);if(demo){setReport(demoReports.find(r=>r.id===id)||null);setLoading(false);return}reportsService.byId(id||'',user?.laboratoryId||'').then(r=>active&&setReport(r)).catch(e=>active&&setError(e.message)).finally(()=>active&&setLoading(false));return()=>{active=false}},[demo,id,user?.laboratoryId,reload]);const pdf=demo?null:authorizedPdfUrl(report?.signedPdfUrl);const results=Array.isArray(report?.analysisResults)?report.analysisResults:[];
+ const needsCorrectedPdf=Boolean(report?.rectifiesId&&report.reportKind==='PDF_UPLOAD'&&!report.originalPdfUrl)
  const canPreview = report?.status !== 'ASSINADO' && (report?.reportKind === 'WATER' || report?.reportKind === 'SOIL')
 return <><Link className="back-link" to={base+'/reports'}><ChevronLeft size={16}/>Voltar aos laudos</Link><Heading eyebrow="DOCUMENTO LABORATORIAL" title={report?.identification||'Detalhes do laudo'} description="Dados da amostra, resultados e rastreabilidade em um só lugar." />
  {feedback&&<p role="status">{feedback}</p>}
+ {!demo&&report&&(report.status==='ASSINADO'||report.rectifiesId)&&<ReportVersions key={report.id+':'+reload} reportId={report.id} laboratoryId={user?.laboratoryId||''} base={base}/>}
+ {!demo&&report?.rectifiesId&&report.reportKind==='PDF_UPLOAD'&&report.status==='RASCUNHO'&&report.revision&&
+  <RectificationPdf key={report.revision} reportId={report.id} revision={report.revision} laboratoryId={user?.laboratoryId||''}
+   onSaved={()=>{setFeedback('PDF corrigido anexado ao rascunho.');setReload(value=>value+1)}}/>}
+ {!demo&&report?.serviceOrderId&&<OrderInspectionNotes key={report.serviceOrderId} orderId={report.serviceOrderId} base={base} laboratoryId={user?.laboratoryId}/>}
  {actionError&&<p className="error" role="alert">{actionError}</p>}
  {!actionError&&!demo&&report?.status==='VALIDADO'&&report.signatureStatus==='FAILED'&&
   <p className="error" role="alert">{issuanceFailureMessage(report.issuanceFailureCode || '')}</p>}
@@ -77,7 +85,7 @@ return <><Link className="back-link" to={base+'/reports'}><ChevronLeft size={16}
   {canPreview&&<button className="button" onClick={()=>setPreview(true)}>Conferir modelo</button>}
   {report.status==='RASCUNHO'&&<>
    {(report.reportKind==='WATER'||report.reportKind==='SOIL')&&<Link className="button" to={base+'/reports/'+report.id+'/edit'}>Editar rascunho</Link>}
-   <button className="button primary" disabled={pending} onClick={()=>void transition('submit')}>Enviar para revisão</button>
+   <button className="button primary" disabled={pending||needsCorrectedPdf} onClick={()=>void transition('submit')}>Enviar para revisão</button>
   </>}
   {report.status==='AGUARDANDO_VALIDACAO'&&user.role==='ADMIN'&&<>
    <button className="button" disabled={pending} onClick={()=>void transition('return')}>Devolver para ajustes</button>

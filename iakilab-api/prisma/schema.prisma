@@ -35,6 +35,25 @@ enum FileKind {
   ISSUED
   SIGNED
 }
+enum InspectionDecision {
+  ACCEPTED
+  ACCEPTED_WITH_RESERVATION
+  REJECTED
+}
+
+model ServiceOrder {
+  id String @id @default(uuid()) @db.Uuid
+  laboratoryId String @db.Uuid
+  number String
+  createdAt DateTime @default(now())
+  visitCompletedAt DateTime?
+  laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  samples Sample[]
+  reports Report[]
+  @@unique([laboratoryId, id])
+  @@unique([laboratoryId, number])
+}
+
 model Laboratory {
   id String @id @default(uuid()) @db.Uuid
   slug String @unique
@@ -50,6 +69,7 @@ model Laboratory {
   subscriptions Subscription[]
   clients Client[]
   samples Sample[]
+  serviceOrders ServiceOrder[]
   reportEvents ReportEvent[]
 }
 model User {
@@ -119,15 +139,30 @@ model Report {
   issuanceStartedAt DateTime?
   issuanceFailedAt DateTime?
   issuanceFailureCode String?
+  rectifiesId String? @db.Uuid
+  rectificationRootId String? @db.Uuid
+  rectificationNumber Int @default(0)
+  rectificationReason String?
+  rectificationActorId String? @db.Uuid
+  rectificationActorName String?
+  previousReport Report? @relation("PreviousReport", fields: [laboratoryId, rectifiesId], references: [laboratoryId, id], onDelete: Restrict)
+  nextReport Report? @relation("PreviousReport")
+  seriesRoot Report? @relation("ReportSeries", fields: [laboratoryId, rectificationRootId], references: [laboratoryId, id], onDelete: Restrict)
+  rectifications Report[] @relation("ReportSeries")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
+  serviceOrderId String? @db.Uuid
+  serviceOrder ServiceOrder? @relation(fields: [laboratoryId, serviceOrderId], references: [laboratoryId, id], onDelete: Restrict)
   versions ReportVersion[]
   events ReportEvent[]
   @@unique([laboratoryId, id])
   @@unique([laboratoryId, identification])
   @@index([laboratoryId, createdAt, id])
+  @@unique([laboratoryId, rectifiesId])
+  @@unique([laboratoryId, rectificationRootId, rectificationNumber])
   @@index([laboratoryId, stage])
+  @@index([laboratoryId, serviceOrderId])
 }
 model ReportVersion {
   id String @id @default(uuid()) @db.Uuid
@@ -208,11 +243,22 @@ model Sample {
   collectedAt DateTime
   status String
   analyses String[]
+  serviceOrderId String? @db.Uuid
+  serviceOrder ServiceOrder? @relation(fields: [laboratoryId, serviceOrderId], references: [laboratoryId, id], onDelete: Restrict)
+  inspectionDecision InspectionDecision?
+  receivedAt DateTime?
+  receivedById String? @db.Uuid
+  receivedByName String?
+  arrivalCondition String?
+  inspectionReason String?
+  analysisStartedAt DateTime?
+  analysisResult String?
   active Boolean @default(true)
   laboratory Laboratory @relation(fields: [laboratoryId], references: [id], onDelete: Restrict)
   @@unique([laboratoryId, id])
   @@unique([laboratoryId, identification])
   @@index([laboratoryId, active, collectedAt])
+  @@index([laboratoryId, serviceOrderId])
 }
 model ReportEvent {
   id String @id @default(uuid()) @db.Uuid

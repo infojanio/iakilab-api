@@ -4,7 +4,7 @@ import { publicCode } from './get-public-report.js'
 
 export function downloadPublicReport(useCase: ReadPublicReport) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
-    const { bytes } = await useCase.execute(publicCode(request))
+    const bytes = await useCase.download(publicCode(request))
     return reply.type('application/pdf').header('Content-Disposition', 'attachment; filename="laudo.pdf"').send(bytes)
   }
 }

@@ -8,6 +8,13 @@ export function legacyReport(useCase: ReadPublicReport) {
   return async (request: FastifyRequest) => {
     const { id } = idParams.parse(request.params)
     const { metadata } = await useCase.execute(id)
-    return { report: { id, identification: metadata.identification, createdAt: metadata.createdAt, signedPdfUrl: metadata.downloadPath } }
+    return { report: {
+      id,
+      identification: metadata.identification,
+      createdAt: metadata.createdAt,
+      signedPdfUrl: metadata.downloadPath,
+      documentStatus: metadata.documentStatus,
+      currentCode: metadata.currentCode,
+    } }
   }
 }

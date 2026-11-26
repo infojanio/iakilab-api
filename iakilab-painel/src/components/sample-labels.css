@@ -1,0 +1,48 @@
+.sample-label-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+}
+
+.sample-label {
+  border: 1px solid #333;
+  padding: 12px;
+  background: #fff;
+  color: #111;
+  overflow-wrap: anywhere;
+}
+
+.sample-label strong { display: block; font-size: 20px; }
+.sample-label p { margin: 4px 0 0; font-size: 13px; }
+
+@media print {
+  body:has(.sample-label-grid) { background: #fff !important; overflow: visible !important; }
+  body:has(.sample-label-grid) .sidebar,
+  body:has(.sample-label-grid) .nav-scrim,
+  body:has(.sample-label-grid) .main > :not(.content),
+  body:has(.sample-label-grid) .content > :not(.modal-backdrop:has(.sample-label-grid)),
+  body:has(.sample-label-grid) .modal > :not(.sample-label-grid) { display: none !important; }
+  body:has(.sample-label-grid) .app-shell,
+  body:has(.sample-label-grid) .main,
+  body:has(.sample-label-grid) .content,
+  body:has(.sample-label-grid) .modal-backdrop,
+  body:has(.sample-label-grid) .modal {
+    display: block !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+  }
+  .sample-label-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4mm; }
+  .sample-label { break-inside: avoid; padding: 3mm; }
+  .sample-label strong { font-size: 14pt; }
+  .sample-label p { font-size: 10pt; }
+}

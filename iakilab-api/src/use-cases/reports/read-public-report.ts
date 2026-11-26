@@ -6,24 +6,33 @@ import { verifiedFile } from './read-reports.js'
 
 export class ReadPublicReport {
   constructor(
-    private repository: Pick<ReportIssuanceRepository, 'findPublished' | 'findPublishedByFilename'>,
+    private repository: Pick<ReportIssuanceRepository, 'findPublished' | 'findPublishedByFilename' | 'series'>,
     private storage: PdfStorage,
   ) {}
 
   async execute(code: string) {
     const report = await this.repository.findPublished(code)
-    const bytes = await this.read(report)
     if (!report) throw new AppError(404, 'PUBLISHED_REPORT_NOT_FOUND')
+    const bytes = await this.read(report)
+    const series = await this.repository.series(report.laboratoryId, report.rectificationRootId ?? report.id, true)
+    const current = [...series].reverse().find(row => row.publicCode && verifiedFile(row))
+    const superseded = current && current.id !== report.id && current.publicCode
     return {
       bytes,
       metadata: {
         identification: report.identification,
         signatureStatus: 'VERIFIED',
+        documentStatus: superseded ? 'SUPERSEDED' : 'CURRENT',
+        ...(superseded && { currentCode: superseded }),
         createdAt: report.createdAt.toISOString(),
         issuedAt: report.versions[0].issuedAt?.toISOString(),
         downloadPath: '/public/reports/' + encodeURIComponent(code) + '/pdf',
       },
     }
+  }
+
+  async download(code: string) {
+    return this.read(await this.repository.findPublished(code))
   }
 
   async legacyPdf(filename: string) {
